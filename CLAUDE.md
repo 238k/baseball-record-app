@@ -9,6 +9,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - コードベースを調査した上で、`.steering/YYMMDDhhmm-機能名.md` に作業内容・完了要件チェックリストを作成します
 - ドキュメントのセルフレビュー後、チェックリストをすべて完了するまで自律的に実装を続けます
 
+## Git Operations
+
+git操作（pull、push、PR作成、issue操作など）はすべて `gh` コマンド（GitHub CLI）を使用してください。
+
+```bash
+gh repo sync           # リモートの最新状態に同期
+gh pr create           # プルリクエスト作成
+gh pr list             # PR一覧
+gh issue list          # issue一覧
+```
+
 ## Commands
 
 ```bash

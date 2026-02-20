@@ -149,7 +149,7 @@ create table at_bats (
     'K','KK',
     'GO','FO','LO',
     'DP','SF','SH',
-    'FC','E','ROE'
+    'FC','E'
   )),
   rbi int not null default 0,
   recorded_by uuid references profiles(id) on delete set null,
@@ -217,6 +217,7 @@ create or replace view v_batter_game_stats as
 select
   ab.game_id,
   ab.lineup_id,
+  l.batting_order,
   l.player_id,
   l.player_name,
   coalesce(p.name, l.player_name) as name,
@@ -260,7 +261,7 @@ left join runner_events re on re.lineup_id = ab.lineup_id
   and re.at_bat_id = ab.id and re.event_type = 'scored'
 left join runner_events re2 on re2.lineup_id = ab.lineup_id
   and re2.at_bat_id = ab.id
-group by ab.game_id, ab.lineup_id, l.player_id, l.player_name, p.name, p.number;
+group by ab.game_id, ab.lineup_id, l.batting_order, l.player_id, l.player_name, p.name, p.number;
 
 -- 打者成績（通算・登録選手のみ）
 create or replace view v_batter_career_stats as
@@ -350,13 +351,14 @@ join players p on p.id = l.player_id  -- 登録選手のみ
 group by l.player_id, p.name, p.number, p.team_id;
 
 -- スコアボード（イニング別得点）
+-- 得点は runner_events.scored のみで集計する（at_bats.rbi との二重カウントを避けるため）
+-- 打者が本塁打で生還する場合も runner_events(event_type='scored') として記録すること
 create or replace view v_scoreboard as
 select
   g.id as game_id,
   ab.inning,
   ab.inning_half,
-  coalesce(sum(ab.rbi), 0) +
-    count(re.id) filter (where re.event_type = 'scored') as runs
+  count(re.id) filter (where re.event_type = 'scored') as runs
 from games g
 join at_bats ab on ab.game_id = g.id
 left join runner_events re on re.at_bat_id = ab.id and re.event_type = 'scored'

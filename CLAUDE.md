@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Implementation Workflow
+
+機能実装には `/implement` スキルを使用してください。
+
+- コードベースを調査した上で、`.steering/YYMMDDhhmm-機能名.md` に作業内容・完了要件チェックリストを作成します
+- ドキュメントのセルフレビュー後、チェックリストをすべて完了するまで自律的に実装を続けます
+
 ## Commands
 
 ```bash
@@ -62,7 +69,7 @@ Realtime subscriptions (must be enabled in Supabase dashboard > Database > Repli
 
 ### At-Bat Result Codes
 
-`1B`, `2B`, `3B`, `HR`, `BB`, `IBB`, `HBP`, `K` (swinging), `KK` (looking), `GO`, `FO`, `LO`, `DP`, `SF`, `SH`, `FC`, `E`, `ROE`
+`1B`, `2B`, `3B`, `HR`, `BB`, `IBB`, `HBP`, `K` (swinging), `KK` (looking), `GO`, `FO`, `LO`, `DP`, `SF`, `SH`, `FC`, `E`
 
 ### UI Conventions
 

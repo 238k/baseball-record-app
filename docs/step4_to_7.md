@@ -17,11 +17,10 @@ shadcn/uiがインストール済みであること。
 ## 変更するファイル
 
 ```
-src/
-├── components/game/
-│   └── PitchCounter.tsx        # 新規作成
-└── app/(main)/games/[id]/
-    └── input/page.tsx          # PitchCounterを組み込む
+components/game/
+└── PitchCounter.tsx        # 新規作成
+app/(main)/games/[id]/
+└── input/page.tsx          # PitchCounterを組み込む
 ```
 
 ---
@@ -47,6 +46,11 @@ shadcn/uiの `Button`・`Badge` を使用してください。
 - ストライク3→三振（自動で打席結果選択を「三振(空)」にセット）
 - ファウルは2ストライクでカウントが増えない
 - 投球ごとに `pitches` テーブルにレコードを保存
+
+**pitches.result の値：**
+- ボール → `'ball'`
+- ストライク → `'strike'`
+- ファウル → `'foul'`
 
 **取り消しボタン：**
 - 直前の1球を削除（`pitches` の最後のレコードを削除）
@@ -91,14 +95,13 @@ Step 3または4が完了し、記録入力画面が動作していること。
 ## 追加・変更するファイル
 
 ```
-src/
-├── hooks/
-│   └── useGameSession.ts           # 排他制御フック（新規）
-├── components/game/
-│   ├── InputLockBanner.tsx          # 入力中表示バナー（新規）
-│   └── SessionRequestModal.tsx      # 申請通知モーダル（新規）
-└── app/(main)/games/[id]/
-    └── input/page.tsx               # 排他制御を組み込む
+hooks/
+└── useGameSession.ts           # 排他制御フック（新規）
+components/game/
+├── InputLockBanner.tsx          # 入力中表示バナー（新規）
+└── SessionRequestModal.tsx      # 申請通知モーダル（新規）
+app/(main)/games/[id]/
+└── input/page.tsx               # 排他制御を組み込む
 ```
 
 ---
@@ -134,6 +137,7 @@ type UseGameSessionReturn = {
 **タイムアウト処理：**
 - `pending` 状態の申請が60秒経過したら自動承認
 - `useEffect` 内で `setInterval` で監視
+- ※ 入力権保持者のタブが閉じられた場合は自動承認されないため、管理者強制解除を使うこと
 
 ### InputLockBanner コンポーネント
 
@@ -204,11 +208,10 @@ Step 3〜5が完了していること。
 ## 変更するファイル
 
 ```
-src/
-├── hooks/
-│   └── useRealtimeGame.ts          # Realtime購読フック（新規）
-└── app/(main)/games/[id]/
-    └── page.tsx                    # 観戦画面に仕上げる
+hooks/
+└── useRealtimeGame.ts          # Realtime購読フック（新規）
+app/(main)/games/[id]/
+└── page.tsx                    # 観戦画面に仕上げる
 ```
 
 ---
@@ -244,7 +247,7 @@ const channels = [
 ┌─────────────────────────────────────┐
 │        自チーム  3 - 2  相手         │  ← 大きなスコア表示
 ├──────┬──────┬──────┬──────┬──────┬──┤
-│  回  │  1   │  2   │  3   │ ... │ 計│  ← イニング別スコア
+│  回  │  1   │  2   │  3   │ ... │ 計│  ← イニング別スコア（v_scoreboardから取得）
 │ 自   │  0   │  2   │  1   │     │ 3 │
 │ 相   │  0   │  1   │  1   │     │ 2 │
 ├─────────────────────────────────────┤
@@ -257,6 +260,16 @@ const channels = [
 │  鈴木 → 四球                        │
 │  佐藤 → 三振                        │
 └─────────────────────────────────────┘
+```
+
+**イニング別スコアの取得：**
+```typescript
+// v_scoreboard ビューから取得する
+const { data } = await supabase
+  .from('v_scoreboard')
+  .select('*')
+  .eq('game_id', gameId)
+  .order('inning')
 ```
 
 ---
@@ -294,16 +307,15 @@ SupabaseにVIEW（v_batter_game_stats, v_batter_career_stats, v_pitcher_game_sta
 ## 追加するファイル
 
 ```
-src/
-├── app/(main)/
-│   ├── games/[id]/
-│   │   └── page.tsx              # 試合成績タブを追加
-│   └── team/[id]/
-│       └── stats/page.tsx        # チーム通算成績
-├── components/
-│   └── stats/
-│       ├── BatterStatsTable.tsx  # 打者成績テーブル
-│       └── PitcherStatsTable.tsx # 投手成績テーブル
+app/(main)/
+├── games/[id]/
+│   └── page.tsx              # 試合成績タブを追加
+└── team/[id]/
+    └── stats/page.tsx        # チーム通算成績
+components/
+└── stats/
+    ├── BatterStatsTable.tsx  # 打者成績テーブル
+    └── PitcherStatsTable.tsx # 投手成績テーブル
 ```
 
 ---
@@ -323,7 +335,7 @@ npx shadcn@latest add table
 **VIEWから直接取得する（TypeScriptでの集計は不要）：**
 
 ```typescript
-// 試合の打者成績
+// 試合の打者成績（batting_order順）
 const { data } = await supabase
   .from('v_batter_game_stats')
   .select('*')
@@ -350,7 +362,7 @@ const formatObp = (hits: number, walks: number, hbp: number, atBats: number, sac
   return denom === 0 ? '---' : ((hits + walks + hbp) / denom).toFixed(3).replace(/^0/, '')
 }
 
-// 防御率
+// 防御率（9イニング換算・27アウト）
 const formatEra = (earnedRuns: number, outs: number) =>
   outs === 0 ? '---' : (earnedRuns * 27 / outs).toFixed(2)
 

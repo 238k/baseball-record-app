@@ -29,16 +29,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ---
 
-## Step 0: 初期セットアップ
+## Step 0: 初期セットアップ（既に完了済みの場合はスキップ）
 
 ### shadcn/ui のインストール
+
+> **注意**: 既に `components.json` が存在する場合はスキップしてください。
 
 ```bash
 npx shadcn@latest init
 ```
 
 設定は以下を選択してください：
-- Style: Default
+- Style: **new-york**
 - Base color: Gray
 - CSS variables: Yes
 
@@ -50,13 +52,13 @@ npx shadcn@latest add button input label card dialog select tabs badge toast ava
 
 ### Supabaseセットアップ（MCP経由）
 
-まず、添付の `supabase_schema_v2.sql` の内容を以下のパスに配置してください：
+マイグレーションファイルは既に以下のパスに配置済みです：
 
 ```
-supabase/migrations/20240101000000_initial_schema.sql
+supabase/migrations/2602201340_initial_schama.sql
 ```
 
-次に、**Supabase MCPを使って上記ファイルをSupabaseプロジェクトに適用してください。**
+**Supabase MCPを使って上記ファイルをSupabaseプロジェクトに適用してください。**
 
 実行後、以下を確認してください：
 - 全テーブルが作成されていること
@@ -65,7 +67,7 @@ supabase/migrations/20240101000000_initial_schema.sql
 
 次にSupabase CLIで型定義を生成してください：
 ```bash
-npx supabase gen types typescript --project-id YOUR_PROJECT_ID > src/lib/supabase/types.ts
+npx supabase gen types typescript --project-id YOUR_PROJECT_ID > lib/supabase/types.ts
 ```
 
 Supabaseダッシュボードで以下を設定してください：
@@ -77,36 +79,35 @@ Supabaseダッシュボードで以下を設定してください：
 ## ディレクトリ構成（このステップで作成するもの）
 
 ```
-src/
-├── app/
-│   ├── (auth)/
-│   │   ├── login/page.tsx          # ログイン画面
-│   │   └── register/page.tsx       # 新規登録画面
-│   ├── (main)/
-│   │   ├── layout.tsx              # 認証チェック・ナビゲーション
-│   │   ├── page.tsx                # トップ（試合一覧・後のステップで充実）
-│   │   └── team/
-│   │       ├── new/page.tsx        # チーム作成
-│   │       └── [id]/
-│   │           ├── page.tsx        # チーム管理トップ
-│   │           ├── players/page.tsx  # 選手一覧・登録・編集
-│   │           └── invite/page.tsx   # 招待コード・メンバー管理
-│   └── layout.tsx
-├── lib/
-│   ├── supabase/
-│   │   ├── client.ts               # ブラウザ用クライアント
-│   │   ├── server.ts               # サーバー用クライアント
-│   │   └── types.ts                # 自動生成
-│   └── utils.ts
-├── components/
-│   ├── auth/
-│   │   └── AuthForm.tsx
-│   ├── team/
-│   │   ├── TeamCard.tsx
-│   │   ├── PlayerForm.tsx
-│   │   └── MemberList.tsx
-│   └── ui/                         # shadcn/uiが自動生成（手動作成不要）
-└── middleware.ts
+app/
+├── (auth)/
+│   ├── login/page.tsx          # ログイン画面
+│   └── register/page.tsx       # 新規登録画面
+├── (main)/
+│   ├── layout.tsx              # 認証チェック・ナビゲーション
+│   ├── page.tsx                # トップ（試合一覧・後のステップで充実）
+│   └── team/
+│       ├── new/page.tsx        # チーム作成
+│       └── [id]/
+│           ├── page.tsx        # チーム管理トップ
+│           ├── players/page.tsx  # 選手一覧・登録・編集
+│           └── invite/page.tsx   # 招待コード・メンバー管理
+└── layout.tsx
+lib/
+├── supabase/
+│   ├── client.ts               # ブラウザ用クライアント
+│   ├── server.ts               # サーバー用クライアント
+│   └── types.ts                # 自動生成
+└── utils.ts
+components/
+├── auth/
+│   └── AuthForm.tsx
+├── team/
+│   ├── TeamCard.tsx
+│   ├── PlayerForm.tsx
+│   └── MemberList.tsx
+└── ui/                         # shadcn/uiが自動生成（手動作成不要）
+middleware.ts
 ```
 
 ---
@@ -183,7 +184,7 @@ src/
 - shadcn/uiのコンポーネントを積極的に使用すること
 - shadcn/uiのButtonは `size="lg"` を基本とし、重要なアクションは追加で `className="min-h-16 text-lg"` を指定
 - shadcn/uiのInputは `className="text-lg h-14"` を基本としタップしやすいサイズに
-- ローディング中はButtonに `disabled` と `loading` 状態を設定してスピナーを表示
+- ローディング中はButtonに `disabled` を設定し、ボタン内にスピナーを表示する
 - エラーはフォームの近くに赤文字で表示（shadcn/uiの `FormMessage` を使用）
 - モーダルはshadcn/uiの `Dialog` コンポーネントを使用
 

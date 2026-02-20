@@ -22,19 +22,18 @@ Step 1が完了し、以下が動作していること：
 ## 追加・変更するファイル
 
 ```
-src/
-├── app/
-│   └── (main)/
-│       ├── page.tsx                        # 試合一覧を追加
-│       └── games/
-│           ├── new/page.tsx                # 試合登録
-│           └── [id]/
-│               ├── page.tsx                # 試合詳細（簡易版）
-│               └── lineup/page.tsx         # オーダー登録
-├── components/
-│   └── game/
-│       ├── GameCard.tsx                    # 試合カード
-│       └── LineupEditor.tsx                # オーダー入力コンポーネント
+app/
+└── (main)/
+    ├── page.tsx                        # 試合一覧を追加
+    └── games/
+        ├── new/page.tsx                # 試合登録
+        └── [id]/
+            ├── page.tsx                # 試合詳細（簡易版）
+            └── lineup/page.tsx         # オーダー登録
+components/
+└── game/
+    ├── GameCard.tsx                    # 試合カード
+    └── LineupEditor.tsx                # オーダー入力コンポーネント
 ```
 
 ---
@@ -56,7 +55,7 @@ src/
 - 試合日（必須・デフォルト今日）
 - 場所
 - ホーム/ビジター（トグル）
-- イニング数（デフォルト7・草野球は7回が多い）
+- イニング数（デフォルト9・草野球で7回制の場合は手動変更）
 
 登録後はオーダー登録画面へ遷移。
 

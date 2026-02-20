@@ -28,15 +28,27 @@ export default function NewTeamPage() {
       return
     }
 
-    const { data: team, error: teamError } = await supabase
+    const { error: insertError } = await supabase
       .from('teams')
       .insert({ name: teamName.trim(), owner_id: user.id })
-      .select('id')
-      .single()
 
-    if (teamError || !team) {
+    if (insertError) {
       setError('チームの作成に失敗しました')
       setLoading(false)
+      return
+    }
+
+    // INSERT 後にトリガーが team_members に追加するため、SELECT は別クエリで行う
+    const { data: team, error: selectError } = await supabase
+      .from('teams')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (selectError || !team) {
+      router.push('/')
       return
     }
 

@@ -1,8 +1,6 @@
 ---
 name: vercel-react-best-practices
-description: React and Next.js performance optimization guidelines from Vercel Engineering. Use when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.
-tags: [React, Next.js, performance, optimization, vercel, waterfalls, bundle-size, RSC]
-platforms: [Claude, ChatGPT, Gemini]
+description: React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.
 license: MIT
 metadata:
   author: vercel
@@ -11,7 +9,7 @@ metadata:
 
 # Vercel React Best Practices
 
-Comprehensive performance optimization guide for React and Next.js applications, maintained by Vercel. Contains 45 rules across 8 categories, prioritized by impact to guide automated refactoring and code generation.
+Comprehensive performance optimization guide for React and Next.js applications, maintained by Vercel. Contains 57 rules across 8 categories, prioritized by impact to guide automated refactoring and code generation.
 
 ## When to Apply
 
@@ -55,8 +53,10 @@ Reference these guidelines when:
 
 ### 3. Server-Side Performance (HIGH)
 
+- `server-auth-actions` - Authenticate server actions like API routes
 - `server-cache-react` - Use React.cache() for per-request deduplication
 - `server-cache-lru` - Use LRU cache for cross-request caching
+- `server-dedup-props` - Avoid duplicate serialization in RSC props
 - `server-serialization` - Minimize data passed to client components
 - `server-parallel-fetching` - Restructure components to parallelize fetches
 - `server-after-nonblocking` - Use after() for non-blocking operations
@@ -65,16 +65,23 @@ Reference these guidelines when:
 
 - `client-swr-dedup` - Use SWR for automatic request deduplication
 - `client-event-listeners` - Deduplicate global event listeners
+- `client-passive-event-listeners` - Use passive listeners for scroll
+- `client-localstorage-schema` - Version and minimize localStorage data
 
 ### 5. Re-render Optimization (MEDIUM)
 
 - `rerender-defer-reads` - Don't subscribe to state only used in callbacks
 - `rerender-memo` - Extract expensive work into memoized components
+- `rerender-memo-with-default-value` - Hoist default non-primitive props
 - `rerender-dependencies` - Use primitive dependencies in effects
 - `rerender-derived-state` - Subscribe to derived booleans, not raw values
+- `rerender-derived-state-no-effect` - Derive state during render, not effects
 - `rerender-functional-setstate` - Use functional setState for stable callbacks
 - `rerender-lazy-state-init` - Pass function to useState for expensive values
+- `rerender-simple-expression-in-memo` - Avoid memo for simple primitives
+- `rerender-move-effect-to-event` - Put interaction logic in event handlers
 - `rerender-transitions` - Use startTransition for non-urgent updates
+- `rerender-use-ref-transient-values` - Use refs for transient frequent values
 
 ### 6. Rendering Performance (MEDIUM)
 
@@ -83,8 +90,10 @@ Reference these guidelines when:
 - `rendering-hoist-jsx` - Extract static JSX outside components
 - `rendering-svg-precision` - Reduce SVG coordinate precision
 - `rendering-hydration-no-flicker` - Use inline script for client-only data
+- `rendering-hydration-suppress-warning` - Suppress expected mismatches
 - `rendering-activity` - Use Activity component for show/hide
 - `rendering-conditional-render` - Use ternary, not && for conditionals
+- `rendering-usetransition-loading` - Prefer useTransition for loading state
 
 ### 7. JavaScript Performance (LOW-MEDIUM)
 
@@ -104,109 +113,24 @@ Reference these guidelines when:
 ### 8. Advanced Patterns (LOW)
 
 - `advanced-event-handler-refs` - Store event handlers in refs
+- `advanced-init-once` - Initialize app once per app load
 - `advanced-use-latest` - useLatest for stable callback refs
 
 ## How to Use
 
-For detailed explanations and code examples, read the full compiled document: `AGENTS.md`
+Read individual rule files for detailed explanations and code examples:
 
-Each rule contains:
+```
+rules/async-parallel.md
+rules/bundle-barrel-imports.md
+```
+
+Each rule file contains:
 - Brief explanation of why it matters
 - Incorrect code example with explanation
 - Correct code example with explanation
 - Additional context and references
 
-## Key Examples
+## Full Compiled Document
 
-### Promise.all for Independent Operations (CRITICAL)
-
-```typescript
-// ❌ Sequential: 3 round trips
-const user = await fetchUser()
-const posts = await fetchPosts()
-const comments = await fetchComments()
-
-// ✅ Parallel: 1 round trip
-const [user, posts, comments] = await Promise.all([
-  fetchUser(),
-  fetchPosts(),
-  fetchComments()
-])
-```
-
-### Avoid Barrel File Imports (CRITICAL)
-
-```tsx
-// ❌ Imports entire library (200-800ms import cost)
-import { Check, X, Menu } from 'lucide-react'
-
-// ✅ Imports only what you need
-import Check from 'lucide-react/dist/esm/icons/check'
-import X from 'lucide-react/dist/esm/icons/x'
-```
-
-### Dynamic Imports for Heavy Components (CRITICAL)
-
-```tsx
-// ❌ Monaco bundles with main chunk ~300KB
-import { MonacoEditor } from './monaco-editor'
-
-// ✅ Monaco loads on demand
-import dynamic from 'next/dynamic'
-const MonacoEditor = dynamic(
-  () => import('./monaco-editor').then(m => m.MonacoEditor),
-  { ssr: false }
-)
-```
-
-### Use Functional setState (MEDIUM)
-
-```tsx
-// ❌ Requires state as dependency, stale closure risk
-const addItems = useCallback((newItems) => {
-  setItems([...items, ...newItems])
-}, [items])
-
-// ✅ Stable callback, no stale closures
-const addItems = useCallback((newItems) => {
-  setItems(curr => [...curr, ...newItems])
-}, [])
-```
-
-## Constraints
-
-### 필수 규칙 (MUST)
-
-1. **Waterfall 제거**: Promise.all, Suspense 사용
-2. **번들 최적화**: barrel imports 금지, dynamic imports 사용
-3. **RSC 경계**: 필요한 데이터만 직렬화
-
-### 금지 사항 (MUST NOT)
-
-1. **Sequential await**: 독립적인 fetch를 순차 실행하지 않음
-2. **Array mutations**: sort() 대신 toSorted() 사용
-3. **Inline objects in React.cache**: 캐시 미스 발생
-
-## References
-
-- [React Documentation](https://react.dev)
-- [Next.js Documentation](https://nextjs.org)
-- [SWR](https://swr.vercel.app)
-- [better-all](https://github.com/shuding/better-all)
-- [Vercel Blog: Optimizing Package Imports](https://vercel.com/blog/how-we-optimized-package-imports-in-next-js)
-- [Vercel Blog: Dashboard Performance](https://vercel.com/blog/how-we-made-the-vercel-dashboard-twice-as-fast)
-
-## Metadata
-
-### 버전
-- **현재 버전**: 1.0.0
-- **최종 업데이트**: 2026-01-22
-- **호환 플랫폼**: Claude, ChatGPT, Gemini
-- **원본 출처**: vercel/agent-skills
-
-### 관련 스킬
-- [performance-optimization](../../code-quality/performance-optimization/SKILL.md): 일반 성능 최적화
-- [state-management](../state-management/SKILL.md): 상태 관리
-
-### 태그
-`#React` `#Next.js` `#performance` `#optimization` `#vercel` `#waterfalls` `#bundle-size` `#RSC` `#frontend`
+For the complete guide with all rules expanded: `AGENTS.md`

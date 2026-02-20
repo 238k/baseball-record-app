@@ -56,7 +56,7 @@ Two separate clients must be used:
 - `lib/supabase/server.ts` — Server (Server Components, Route Handlers, Server Actions)
 - `lib/supabase/types.ts` — Auto-generated from `npx supabase gen types typescript`
 
-Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 ### State Management
 

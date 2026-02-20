@@ -87,6 +87,7 @@ export function PlayerForm({ teamId, player, onSaved }: PlayerFormProps) {
       return
     }
 
+    setLoading(false)
     setOpen(false)
     resetForm()
     onSaved()

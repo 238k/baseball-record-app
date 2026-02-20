@@ -24,15 +24,17 @@ export default function PlayersPage() {
 
   const fetchPlayers = useCallback(async () => {
     const supabase = createClient()
-    const query = supabase
+
+    let query = supabase
       .from('players')
       .select('*')
       .eq('team_id', teamId)
-      .order('number', { ascending: true, nullsFirst: false })
 
-    const { data } = showRetired
-      ? await query
-      : await query.eq('is_active', true)
+    if (!showRetired) {
+      query = query.eq('is_active', true)
+    }
+
+    const { data, error } = await query.order('number', { ascending: true, nullsFirst: false })
 
     // number カラムは text 型のため JS 側で数値ソート（例: 1,2,10 の順）
     const sorted = (data ?? []).sort((a, b) => {

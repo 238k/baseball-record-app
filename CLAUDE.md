@@ -1,0 +1,84 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+pnpm dev          # Start dev server
+pnpm build        # Production build
+pnpm lint         # ESLint
+pnpm test         # Run tests once (Vitest)
+pnpm test:watch   # Watch mode
+```
+
+To run a single test file:
+```bash
+pnpm vitest run path/to/file.test.ts
+```
+
+To add shadcn/ui components:
+```bash
+npx shadcn@latest add <component-name>
+```
+
+## Architecture
+
+This is a Japanese baseball game recording app (野球試合記録アプリ) built for tablet (iPad portrait) use. It uses Next.js 16 App Router with Supabase for auth and the database.
+
+### Route Groups
+
+- `app/(auth)/` — Unauthenticated routes: `/login`, `/register`
+- `app/(main)/` — Authenticated routes behind `middleware.ts` redirect. Includes: `/` (game list), `/games/new`, `/games/[id]`, `/games/[id]/lineup`, `/games/[id]/input`, `/team/new`, `/team/[id]`, `/team/[id]/players`, `/team/[id]/invite`, `/team/[id]/stats`
+
+### Supabase Client Pattern
+
+Two separate clients must be used:
+- `lib/supabase/client.ts` — Browser (Client Components)
+- `lib/supabase/server.ts` — Server (Server Components, Route Handlers, Server Actions)
+- `lib/supabase/types.ts` — Auto-generated from `npx supabase gen types typescript`
+
+Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+### State Management
+
+Game recording state uses custom React hooks (`hooks/useGameState.ts`). Zustand is available for global state. The `useGameState` hook reconstructs game state (current inning, outs, base runners, score) by fetching the latest `at_bats` and `base_runners` from Supabase and must be restorable after page reload.
+
+### Database Schema Overview
+
+Core tables: `profiles` → `teams` → `team_members`, `players`, `games`
+
+Game recording: `lineups` → `at_bats` → `pitches`, `base_runners`, `runner_events`, `pitching_records`
+
+Exclusive input control: `game_input_sessions` (one per game), `game_input_requests`
+
+Statistical views: `v_batter_game_stats`, `v_batter_career_stats`, `v_pitcher_game_stats`, `v_pitcher_career_stats`, `v_scoreboard` — always query these views rather than computing stats in TypeScript.
+
+Key DB behaviors driven by triggers:
+- New user → auto-creates `profiles` row
+- New team → auto-adds owner as `admin` in `team_members`
+
+Realtime subscriptions (must be enabled in Supabase dashboard > Database > Replication): `game_input_sessions`, `game_input_requests`, `at_bats`, `base_runners`, `runner_events`, `games`
+
+### At-Bat Result Codes
+
+`1B`, `2B`, `3B`, `HR`, `BB`, `IBB`, `HBP`, `K` (swinging), `KK` (looking), `GO`, `FO`, `LO`, `DP`, `SF`, `SH`, `FC`, `E`, `ROE`
+
+### UI Conventions
+
+shadcn/ui (new-york style, Gray base) is used throughout. Standard sizing for tablet touch targets:
+- `Button`: `size="lg"`, key actions add `className="min-h-16 text-lg"`
+- `Input`: `className="text-lg h-14"`
+- `Dialog` for modals, `AlertDialog` for confirmations
+- Loading states: `disabled` + spinner on Button
+
+Defensive position labels (Japanese): 投・捕・一・二・三・遊・左・中・右・DH
+
+### Path Aliases
+
+```
+@/components  →  components/
+@/lib         →  lib/
+@/hooks       →  hooks/
+@/components/ui  →  components/ui/  (shadcn auto-generated)
+```

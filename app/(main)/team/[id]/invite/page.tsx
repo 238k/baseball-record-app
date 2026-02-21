@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -34,28 +34,33 @@ export default function InvitePage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [copied, setCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
-
-  const fetchData = useCallback(async () => {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    setCurrentUserId(user.id)
-
-    const [teamRes, membersRes, myMemberRes] = await Promise.all([
-      supabase.from('teams').select('id, invite_code, owner_id').eq('id', teamId).single(),
-      supabase.from('team_members').select('id, role, profiles(id, display_name)').eq('team_id', teamId),
-      supabase.from('team_members').select('role').eq('team_id', teamId).eq('profile_id', user.id).single(),
-    ])
-
-    setTeam(teamRes.data)
-    setMembers((membersRes.data ?? []) as Member[])
-    setIsAdmin(myMemberRes.data?.role === 'admin')
-  }, [teamId])
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    let cancelled = false
+
+    const load = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || cancelled) return
+
+      const [teamRes, membersRes, myMemberRes] = await Promise.all([
+        supabase.from('teams').select('id, invite_code, owner_id').eq('id', teamId).single(),
+        supabase.from('team_members').select('id, role, profiles(id, display_name)').eq('team_id', teamId),
+        supabase.from('team_members').select('role').eq('team_id', teamId).eq('profile_id', user.id).single(),
+      ])
+
+      if (cancelled) return
+
+      setCurrentUserId(user.id)
+      setTeam(teamRes.data)
+      setMembers((membersRes.data ?? []) as Member[])
+      setIsAdmin(myMemberRes.data?.role === 'admin')
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [teamId, refreshKey])
 
   const handleCopy = async () => {
     if (!team) return
@@ -69,7 +74,7 @@ export default function InvitePage() {
     const supabase = createClient()
     const newCode = Math.random().toString(36).substring(2, 10)
     await supabase.from('teams').update({ invite_code: newCode }).eq('id', teamId)
-    await fetchData()
+    setRefreshKey(k => k + 1)
     setRegenerating(false)
   }
 
@@ -129,7 +134,7 @@ export default function InvitePage() {
             currentUserId={currentUserId}
             isAdmin={isAdmin}
             teamId={teamId}
-            onChanged={fetchData}
+            onChanged={() => setRefreshKey(k => k + 1)}
           />
         )}
       </div>

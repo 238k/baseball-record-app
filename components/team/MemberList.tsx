@@ -24,10 +24,10 @@ interface MemberListProps {
   onChanged: () => void
 }
 
-export function MemberList({ members, currentUserId, isAdmin, teamId, onChanged }: MemberListProps) {
+export function MemberList({ members, currentUserId, isAdmin, onChanged }: MemberListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
 
-  const handlePromote = async (memberId: string, profileId: string) => {
+  const handlePromote = async (memberId: string) => {
     setLoadingId(memberId)
     const supabase = createClient()
     await supabase
@@ -74,7 +74,7 @@ export function MemberList({ members, currentUserId, isAdmin, teamId, onChanged 
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handlePromote(member.id, member.profiles.id)}
+                      onClick={() => handlePromote(member.id)}
                       disabled={isLoading}
                       title="管理者に昇格"
                     >

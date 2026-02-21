@@ -107,14 +107,14 @@ components/
 │   ├── PlayerForm.tsx
 │   └── MemberList.tsx
 └── ui/                         # shadcn/uiが自動生成（手動作成不要）
-middleware.ts
+proxy.ts
 ```
 
 ---
 
 ## 実装仕様
 
-### middleware.ts
+### proxy.ts
 
 未認証ユーザーを `/login` にリダイレクト。
 `/login` と `/register` は認証不要。

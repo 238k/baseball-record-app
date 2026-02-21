@@ -18,7 +18,7 @@
 - `lib/supabase/types.ts` — Supabase MCP経由で自動生成した型定義
 - `lib/supabase/client.ts` — ブラウザ用Supabaseクライアント（Client Components用）
 - `lib/supabase/server.ts` — サーバー用Supabaseクライアント（Server Components・Server Actions用）
-- `proxy.ts` — 認証チェック・未認証時 `/login` リダイレクト（Next.js 16では `middleware.ts` → `proxy.ts`）
+- `proxy.ts` — 認証チェック・未認証時 `/login` リダイレクト
 - `components/auth/AuthForm.tsx` — ログイン・新規登録共用フォーム（Google OAuth + メール/パスワード）
 - `app/(auth)/login/page.tsx` — ログイン画面
 - `app/(auth)/register/page.tsx` — 新規登録画面
@@ -45,7 +45,7 @@ button, input, label, card, dialog, select, tabs, badge, avatar, separator
 
 ## 実装メモ
 
-- **Next.js 16 の変更**: `middleware.ts` が `proxy.ts` に改名され、エクスポート関数も `proxy` に変更が必要
+- **Next.js 16**: `proxy.ts` にエクスポート関数 `proxy` を定義（旧 `middleware.ts`）
 - **選手背番号のソート**: DBの `number` カラムは `text` 型のため、フェッチ後にJS側で数値ソートする
 - **DBトリガー**: チーム作成時 → `handle_new_team()` が作成者を `team_members` に `admin` で自動追加
 - **RLS**: `team_members_insert` ポリシーは `with check (true)` のため、招待コード検証はアプリ側で行う

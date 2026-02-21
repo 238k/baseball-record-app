@@ -80,7 +80,7 @@ This is a Japanese baseball game recording app (野球試合記録アプリ) bui
 ### Route Groups
 
 - `app/(auth)/` — Unauthenticated routes: `/login`, `/register`
-- `app/(main)/` — Authenticated routes behind `middleware.ts` redirect. Includes: `/` (game list), `/games/new`, `/games/[id]`, `/games/[id]/lineup`, `/games/[id]/input`, `/team/new`, `/team/[id]`, `/team/[id]/players`, `/team/[id]/invite`, `/team/[id]/stats`
+- `app/(main)/` — Authenticated routes behind `proxy.ts` redirect. Includes: `/` (game list), `/games/new`, `/games/[id]`, `/games/[id]/lineup`, `/games/[id]/input`, `/team/new`, `/team/[id]`, `/team/[id]/players`, `/team/[id]/invite`, `/team/[id]/stats`
 
 ### Supabase Client Pattern
 

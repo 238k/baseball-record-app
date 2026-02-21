@@ -10,6 +10,7 @@ export interface LineupPlayer {
   batting_order: number;
   player_id: string | null;
   player_name: string | null;
+  player_number: string | null;
   position: string | null;
   team_side: string;
 }
@@ -68,17 +69,9 @@ interface BaseRunnerRow {
 
 // ---- Constants ----
 
-const OUT_RESULTS = new Set(["K", "KK", "GO", "FO", "LO", "SF", "SH"]);
-const DOUBLE_PLAY_RESULTS = new Set(["DP"]);
-
-function getOutsForResult(result: string, runnerEvents: RunnerEventRow[]): number {
-  if (DOUBLE_PLAY_RESULTS.has(result)) return 2;
-  if (OUT_RESULTS.has(result)) return 1;
-  // FC, E can produce outs via runner_events
-  const outEvents = runnerEvents.filter((e) => e.event_type === "out");
-  // For results like FC, batter is safe but a runner may be out
-  if (result === "FC") return outEvents.length;
-  return outEvents.length;
+function getOutsForResult(_result: string, runnerEvents: RunnerEventRow[]): number {
+  // Count outs from actual runner_events data (includes batter out events)
+  return runnerEvents.filter((e) => e.event_type === "out").length;
 }
 
 // ---- Hook ----
@@ -126,11 +119,19 @@ export function useGameState(gameId: string) {
       // Fetch lineups (batting lineup only, exclude DH pitchers)
       const { data: lineups } = await supabase
         .from("lineups")
-        .select("id, batting_order, player_id, player_name, position, team_side")
+        .select("id, batting_order, player_id, player_name, position, team_side, players(number)")
         .eq("game_id", gameId)
         .order("batting_order");
 
-      const allLineups: LineupPlayer[] = lineups ?? [];
+      const allLineups: LineupPlayer[] = (lineups ?? []).map((l) => ({
+        id: l.id,
+        batting_order: l.batting_order,
+        player_id: l.player_id,
+        player_name: l.player_name,
+        player_number: (l.players as { number: string | null } | null)?.number ?? null,
+        position: l.position,
+        team_side: l.team_side,
+      }));
 
       // Fetch all at_bats for this game
       const { data: atBats } = await supabase
@@ -175,12 +176,11 @@ export function useGameState(gameId: string) {
       const findLineup = (lineupId: string) =>
         allLineups.find((l) => l.id === lineupId) ?? null;
 
-      for (const ab of completedAtBats) {
-        // If this at-bat is in a different half-inning, update tracking
+      for (let i = 0; i < completedAtBats.length; i++) {
+        const ab = completedAtBats[i];
         const halfKey = `${ab.inning}-${ab.inning_half}`;
 
         if (ab.inning !== currentInning || ab.inning_half !== currentHalf) {
-          // New half-inning started
           currentInning = ab.inning;
           currentHalf = ab.inning_half as "top" | "bottom";
           outs = 0;
@@ -206,14 +206,12 @@ export function useGameState(gameId: string) {
           scoreHome += scoredCount;
         }
 
-        // Calculate outs from this at-bat
+        // Calculate outs from actual runner_events
         const outsFromAb = getOutsForResult(ab.result, events);
         outs += outsFromAb;
 
-        // Track last batter order in this half-inning
         lastBatterOrder[halfKey] = ab.batting_order;
 
-        // If 3 outs, the inning half ends (runners and outs reset will happen for next half)
         if (outs >= 3) {
           outs = 0;
           runners = { first: null, second: null, third: null };
@@ -224,10 +222,12 @@ export function useGameState(gameId: string) {
             currentHalf = "top";
           }
         } else {
-          // Reconstruct runners after this at-bat from events
-          // The next at-bat's base_runners snapshot will be the "after" state
-          // For the final state, we need to compute from the last at-bat's result
-          runners = computeRunnersAfterAtBat(ab, runners, events, allLineups);
+          // Use next at-bat's snapshot if available (accurate), else infer
+          const nextAb = completedAtBats[i + 1];
+          const nextSnapshot = nextAb
+            ? allBaseRunners.filter((br) => br.at_bat_id === nextAb.id)
+            : null;
+          runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, nextSnapshot);
         }
       }
 
@@ -287,23 +287,40 @@ export function useGameState(gameId: string) {
 
 // ---- Helpers ----
 
+/**
+ * Compute runners after an at-bat using the NEXT at-bat's base_runners snapshot
+ * when available (most accurate), falling back to inference for the very last at-bat.
+ */
 function computeRunnersAfterAtBat(
   ab: AtBatRow & { result: string },
   runnersBefore: BaseRunners,
   events: RunnerEventRow[],
-  lineups: LineupPlayer[]
+  lineups: LineupPlayer[],
+  nextAtBatSnapshot: BaseRunnerRow[] | null
 ): BaseRunners {
+  // If we have the next at-bat's snapshot, use it (most accurate)
+  if (nextAtBatSnapshot !== null) {
+    const findLineup = (lineupId: string) =>
+      lineups.find((l) => l.id === lineupId) ?? null;
+    const after: BaseRunners = { first: null, second: null, third: null };
+    for (const br of nextAtBatSnapshot) {
+      if (br.base === "1st") after.first = findLineup(br.lineup_id);
+      if (br.base === "2nd") after.second = findLineup(br.lineup_id);
+      if (br.base === "3rd") after.third = findLineup(br.lineup_id);
+    }
+    return after;
+  }
+
+  // Last at-bat: infer from result code and events
   const result = ab.result;
   const after: BaseRunners = { first: null, second: null, third: null };
 
-  // Get scored/out lineup IDs
   const scoredIds = new Set(events.filter((e) => e.event_type === "scored").map((e) => e.lineup_id));
   const outIds = new Set(events.filter((e) => e.event_type === "out").map((e) => e.lineup_id));
-
-  const batter = lineups.find((l) => l.id === ab.lineup_id) ?? null;
   const removedIds = new Set([...scoredIds, ...outIds]);
 
-  // Runners who stayed or advanced (not scored, not out)
+  const batter = lineups.find((l) => l.id === ab.lineup_id) ?? null;
+
   const remainingRunners: { player: LineupPlayer; fromBase: string }[] = [];
   if (runnersBefore.third && !removedIds.has(runnersBefore.third.id)) {
     remainingRunners.push({ player: runnersBefore.third, fromBase: "3rd" });
@@ -315,17 +332,14 @@ function computeRunnersAfterAtBat(
     remainingRunners.push({ player: runnersBefore.first, fromBase: "1st" });
   }
 
-  // Use default advancement logic based on result type
   switch (result) {
     case "HR":
-      // Everyone scores (handled by events), bases empty
       break;
     case "3B":
       if (batter && !scoredIds.has(batter.id)) after.third = batter;
       break;
     case "2B":
       if (batter && !scoredIds.has(batter.id)) after.second = batter;
-      // Remaining runners advance
       for (const r of remainingRunners) {
         if (r.fromBase === "1st" && !after.third) after.third = r.player;
       }
@@ -342,17 +356,13 @@ function computeRunnersAfterAtBat(
     case "BB":
     case "IBB":
     case "HBP":
-      // Walk/HBP: batter to 1st, push runners only if forced
       if (batter) after.first = batter;
       if (runnersBefore.first && !removedIds.has(runnersBefore.first.id)) {
         after.second = runnersBefore.first;
         if (runnersBefore.second && !removedIds.has(runnersBefore.second.id)) {
           after.third = runnersBefore.second;
-        } else {
-          // Keep 2nd base runner in place if any (and first didn't push)
         }
       }
-      // If 2nd was occupied and 1st wasn't, 2nd stays
       if (!after.second && runnersBefore.second && !removedIds.has(runnersBefore.second.id)) {
         after.second = runnersBefore.second;
       }
@@ -361,21 +371,18 @@ function computeRunnersAfterAtBat(
       }
       break;
     case "SH":
-      // Batter is out, runners advance one base
       for (const r of remainingRunners) {
         if (r.fromBase === "2nd" && !after.third) after.third = r.player;
         else if (r.fromBase === "1st" && !after.second) after.second = r.player;
       }
       break;
     case "SF":
-      // Batter out, 3rd runner scores (handled), others stay
       for (const r of remainingRunners) {
         if (r.fromBase === "2nd") after.second = r.player;
         else if (r.fromBase === "1st") after.first = r.player;
       }
       break;
     default:
-      // GO, FO, LO, K, KK, DP — batter is out, runners generally stay
       for (const r of remainingRunners) {
         if (r.fromBase === "3rd" && !after.third) after.third = r.player;
         else if (r.fromBase === "2nd" && !after.second) after.second = r.player;

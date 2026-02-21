@@ -61,7 +61,7 @@ export function AtBatInput({ onSelect, disabled }: AtBatInputProps) {
                 key={item.code}
                 size="lg"
                 variant="outline"
-                className="w-full min-h-14 text-lg"
+                className="w-full min-h-16 text-lg"
                 disabled={disabled}
                 onClick={() => onSelect(item.code, item.label)}
               >

@@ -249,21 +249,22 @@ export default function GameInputPage() {
           r.lineupId === lineupId ? { ...r, destination: dest } : r
         );
         // Recalculate RBI
-        if (pendingResult) {
-          setRbiOverride(computeRbi(pendingResult.code, batterDest, updated));
+        const code = lastResultCode.current;
+        if (code) {
+          setRbiOverride(computeRbi(code, batterDest, updated));
         }
         return updated;
       });
     },
-    [pendingResult, batterDest]
+    [batterDest]
   );
 
   const handleBatterDestChange = useCallback(
     (dest: RunnerDest) => {
       setBatterDest(dest);
-      setRbiOverride(computeRbi(pendingResult?.code ?? "", dest, runnerRows));
+      setRbiOverride(computeRbi(lastResultCode.current, dest, runnerRows));
     },
-    [pendingResult, runnerRows]
+    [runnerRows]
   );
 
   const handleSaveAtBat = useCallback(async () => {
@@ -430,8 +431,9 @@ export default function GameInputPage() {
   }
 
   const positionLabel = currentBatter?.position ?? "";
+  const numberPrefix = currentBatter?.player_number ? `#${currentBatter.player_number} ` : "";
   const batterDisplay = currentBatter
-    ? `${currentBatter.player_name ?? "—"}（${gameState.currentBatterOrder}番・${positionLabel}）`
+    ? `${numberPrefix}${currentBatter.player_name ?? "—"}（${gameState.currentBatterOrder}番・${positionLabel}）`
     : "—";
 
   return (
@@ -492,7 +494,7 @@ export default function GameInputPage() {
         <Button
           variant="outline"
           size="lg"
-          className="flex-1 min-h-14 text-base"
+          className="flex-1 min-h-16 text-base"
           onClick={() => {
             setShowPitcherChange(true);
             setActionError(null);
@@ -503,7 +505,7 @@ export default function GameInputPage() {
         <Button
           variant="outline"
           size="lg"
-          className="flex-1 min-h-14 text-base"
+          className="flex-1 min-h-16 text-base"
           onClick={() => {
             setShowFinishGame(true);
             setActionError(null);

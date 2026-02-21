@@ -788,7 +788,16 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      get_my_team_ids: { Args: never; Returns: string[] }
+      get_team_id_by_invite_code: {
+        Args: { p_invite_code: string }
+        Returns: string
+      }
+      join_team_by_invite_code: {
+        Args: { p_invite_code: string }
+        Returns: string
+      }
+      promote_team_member: { Args: { p_member_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

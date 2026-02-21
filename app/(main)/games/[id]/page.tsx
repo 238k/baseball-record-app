@@ -51,7 +51,7 @@ export default async function GameDetailPage({
 
   const { data: game } = await supabase
     .from("games")
-    .select("id, team_id, opponent_name, game_date, location, is_home, status, innings")
+    .select("id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh")
     .eq("id", gameId)
     .single();
 
@@ -66,17 +66,35 @@ export default async function GameDetailPage({
   const myTeamSide = game.is_home ? "home" : "visitor";
   const opponentSide = game.is_home ? "visitor" : "home";
 
-  const myLineup = (lineups ?? []).filter(
-    (l: LineupRow) => l.team_side === myTeamSide
-  );
-  const opponentLineupRaw = (lineups ?? []).filter(
-    (l: LineupRow) => l.team_side === opponentSide
-  );
+  const allRows = lineups ?? [];
+
+  // In DH games, find batting_orders that have a DH entry per side
+  const dhOrders: Record<string, Set<number>> = { home: new Set(), visitor: new Set() };
+  if (game.use_dh) {
+    for (const l of allRows) {
+      if (l.position === "DH") dhOrders[l.team_side].add(l.batting_order);
+    }
+  }
+
+  // Separate DH pitchers (position=投 sharing batting_order with DH) from batting lineup
+  const mySideRows = allRows.filter((l: LineupRow) => l.team_side === myTeamSide);
+  const myDhPitcher = game.use_dh
+    ? mySideRows.find((l) => l.position === "投" && dhOrders[myTeamSide].has(l.batting_order))
+    : null;
+  const myLineup = mySideRows.filter((l) => l !== myDhPitcher);
+
+  const opponentSideRows = allRows.filter((l: LineupRow) => l.team_side === opponentSide);
+  const opponentDhPitcher = game.use_dh
+    ? opponentSideRows.find((l) => l.position === "投" && dhOrders[opponentSide].has(l.batting_order))
+    : null;
+  const opponentLineupRaw = opponentSideRows.filter((l) => l !== opponentDhPitcher);
+
   // Hide opponent lineup if all entries are placeholders
   const hasRealOpponentData = opponentLineupRaw.some(
     (l) => l.player_name && !l.player_name.startsWith("相手選手")
   );
   const opponentLineup = hasRealOpponentData ? opponentLineupRaw : [];
+  const showOpponentPitcher = hasRealOpponentData && opponentDhPitcher != null;
 
   // Fetch team name
   const { data: team } = await supabase
@@ -119,6 +137,7 @@ export default async function GameDetailPage({
         <LineupTable
           title={team?.name ?? "自チーム"}
           lineup={myLineup}
+          dhPitcher={myDhPitcher}
         />
       )}
 
@@ -126,6 +145,7 @@ export default async function GameDetailPage({
         <LineupTable
           title={game.opponent_name}
           lineup={opponentLineup}
+          dhPitcher={showOpponentPitcher ? opponentDhPitcher : null}
         />
       )}
 
@@ -167,9 +187,11 @@ export default async function GameDetailPage({
 function LineupTable({
   title,
   lineup,
+  dhPitcher,
 }: {
   title: string;
   lineup: LineupRow[];
+  dhPitcher?: LineupRow | null;
 }) {
   return (
     <Card>
@@ -197,6 +219,15 @@ function LineupTable({
                 </TableCell>
               </TableRow>
             ))}
+            {dhPitcher && (
+              <TableRow className="border-t-2">
+                <TableCell className="text-center font-medium">
+                  先発
+                </TableCell>
+                <TableCell>{dhPitcher.player_name ?? "—"}</TableCell>
+                <TableCell className="text-center">投</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

@@ -9,6 +9,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - コードベースを調査した上で、`.steering/YYMMDDhhmm-機能名.md` に作業内容・完了要件チェックリストを作成します
 - ドキュメントのセルフレビュー後、チェックリストをすべて完了するまで自律的に実装を続けます
 
+## Unit Testing Requirements
+
+**新しいロジック・コンポーネントを実装するときは必ずユニットテストを書いてください。**
+
+### テスト対象の優先度
+
+1. **必須**: バリデーションや条件分岐を含む関数・Server Actions（`actions.test.ts`）
+2. **必須**: 表示条件・権限制御を持つコンポーネント（React Testing Library）
+3. **推奨**: ユーティリティ関数・純粋関数
+
+### テスト技術スタック
+
+- **テストフレームワーク**: Vitest + React Testing Library
+- **セットアップ**: `vitest.setup.ts`（jest-dom + テスト後の cleanup）
+- **テスト実行**: `pnpm test` (一度実行) / `pnpm test:watch` (ウォッチ)
+
+### モックのルール
+
+| モック対象 | 方法 |
+|---|---|
+| `next/navigation` (useRouter等) | `vi.mock('next/navigation', ...)` |
+| `next/link` | `vi.mock('next/link', ...)` でシンプルな `<a>` に置換 |
+| Server Actions (`@/app/.../actions`) | `vi.mock(...)` で関数をモック |
+| Supabase server client (`@/lib/supabase/server`) | `vi.mock(...)` でチェーン可能なモックを返す |
+| Supabase browser client (`@/lib/supabase/client`) | `vi.mock(...)` |
+
+### テストファイルの配置
+
+テストファイルはテスト対象と同じディレクトリに配置します:
+- `lib/utils.ts` → `lib/utils.test.ts`
+- `app/(main)/team/actions.ts` → `app/(main)/team/actions.test.ts`
+- `components/team/TeamCard.tsx` → `components/team/TeamCard.test.tsx`
+
 ## Git Operations
 
 git操作（pull、push、PR作成、issue操作など）はすべて `gh` コマンド（GitHub CLI）を使用してください。

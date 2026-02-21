@@ -230,7 +230,7 @@ interface RecordAtBatInput {
   result: string;
   rbi: number;
   pitchCount: number;
-  pitches: ("ball" | "strike" | "foul")[];
+  pitches: ("ball" | "swinging" | "looking" | "foul")[];
   // Runners on base at start of at-bat (snapshot)
   baseRunnersBefore: { base: string; lineupId: string }[];
   // What happened to each runner + batter

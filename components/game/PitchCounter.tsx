@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Undo2 } from "lucide-react";
 
-type PitchResult = "ball" | "strike" | "foul";
+type PitchResult = "ball" | "swinging" | "looking" | "foul";
 
 interface PitchCounterProps {
   pitchLog: PitchResult[];
@@ -20,7 +20,7 @@ function countFromLog(log: PitchResult[]) {
   for (const p of log) {
     if (p === "ball") {
       balls++;
-    } else if (p === "strike") {
+    } else if (p === "swinging" || p === "looking") {
       strikes++;
     } else if (p === "foul") {
       fouls++;
@@ -37,6 +37,7 @@ export function PitchCounter({
   disabled,
 }: PitchCounterProps) {
   const { balls, strikes, fouls } = countFromLog(pitchLog);
+  const countFull = balls >= 4 || strikes >= 3;
 
   return (
     <div className="space-y-3">
@@ -85,7 +86,7 @@ export function PitchCounter({
           size="lg"
           variant="outline"
           className="flex-1 min-h-14 text-base"
-          disabled={disabled || balls >= 4}
+          disabled={disabled || countFull}
           onClick={() => onPitch("ball")}
         >
           ボール
@@ -94,16 +95,25 @@ export function PitchCounter({
           size="lg"
           variant="outline"
           className="flex-1 min-h-14 text-base"
-          disabled={disabled || strikes >= 3}
-          onClick={() => onPitch("strike")}
+          disabled={disabled || countFull}
+          onClick={() => onPitch("swinging")}
         >
-          ストライク
+          空振り
         </Button>
         <Button
           size="lg"
           variant="outline"
           className="flex-1 min-h-14 text-base"
-          disabled={disabled}
+          disabled={disabled || countFull}
+          onClick={() => onPitch("looking")}
+        >
+          見逃し
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="flex-1 min-h-14 text-base"
+          disabled={disabled || countFull}
           onClick={() => onPitch("foul")}
         >
           ファウル

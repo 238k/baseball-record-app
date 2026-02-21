@@ -225,13 +225,31 @@ export default function GameInputPage() {
   const pitchCounts = useMemo(() => countFromLog(pitchLog), [pitchLog]);
   const highlightCode = useMemo(() => {
     if (pitchCounts.balls >= 4) return "BB";
-    if (pitchCounts.strikes >= 3) return "K";
+    if (pitchCounts.strikes >= 3) {
+      const lastPitch = pitchLog[pitchLog.length - 1];
+      return lastPitch === "looking" ? "KK" : "K";
+    }
     return null;
-  }, [pitchCounts]);
+  }, [pitchCounts, pitchLog]);
 
   const handlePitch = useCallback((result: PitchResult) => {
-    setPitchLog((prev) => [...prev, result]);
-  }, []);
+    const newLog = [...pitchLog, result];
+    setPitchLog(newLog);
+
+    // Auto-result: check if count is full after this pitch
+    const counts = countFromLog(newLog);
+    if (counts.balls >= 4) {
+      setPendingResult({ code: "BB", label: "四球" });
+      setActionError(null);
+    } else if (counts.strikes >= 3) {
+      if (result === "looking") {
+        setPendingResult({ code: "KK", label: "三振(見)" });
+      } else {
+        setPendingResult({ code: "K", label: "三振(空)" });
+      }
+      setActionError(null);
+    }
+  }, [pitchLog]);
 
   const handleUndoPitch = useCallback(() => {
     setPitchLog((prev) => prev.slice(0, -1));

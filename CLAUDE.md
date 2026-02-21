@@ -73,6 +73,32 @@ To add shadcn/ui components:
 npx shadcn@latest add <component-name>
 ```
 
+## Local Development (Supabase)
+
+Docker Desktop が必要です。ローカル Supabase を使った開発手順:
+
+```bash
+pnpm supabase:start    # Supabase コンテナ起動（初回はイメージDL）
+pnpm supabase:reset    # マイグレーション再適用 + seed.sql でデータ投入
+pnpm supabase:stop     # コンテナ停止
+pnpm supabase:status   # 起動中サービスのURL・キー表示
+pnpm supabase:gen-types  # ローカルDBから型定義を再生成
+```
+
+初回セットアップ:
+1. `cp .env.local.example .env.local`
+2. `pnpm supabase:start`（出力される anon key が example と同一であることを確認）
+3. `pnpm dev`
+4. `http://localhost:3000/login` → `admin@example.com` / `password123`
+
+テストデータ（`supabase/seed.sql`）:
+- ユーザー: `admin@example.com`（管理者）、`member@example.com`（メンバー）
+- チーム: テストタイガース（招待コード `TEST1234`）
+- 選手: 11名（9ポジション + 控え2名）
+- 試合: 2件（通常ルール + DH制）
+
+Supabase Studio: `http://127.0.0.1:54323`（ローカルDB管理画面）
+
 ## Architecture
 
 This is a Japanese baseball game recording app (野球試合記録アプリ) built for tablet (iPad portrait) use. It uses Next.js 16 App Router with Supabase for auth and the database.
@@ -89,7 +115,7 @@ Two separate clients must be used:
 - `lib/supabase/server.ts` — Server (Server Components, Route Handlers, Server Actions)
 - `lib/supabase/types.ts` — Auto-generated from `npx supabase gen types typescript`
 
-Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ### State Management
 

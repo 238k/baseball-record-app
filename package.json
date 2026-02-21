@@ -9,7 +9,13 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:status": "supabase status",
+    "supabase:migration:new": "supabase migration new",
+    "supabase:gen-types": "supabase gen types typescript --local > lib/supabase/types.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

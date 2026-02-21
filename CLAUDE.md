@@ -97,7 +97,7 @@ Game recording state uses custom React hooks (`hooks/useGameState.ts`). Zustand 
 
 ### Database Schema Overview
 
-Core tables: `profiles` → `teams` → `team_members`, `players`, `games`
+Core tables: `profiles` → `teams` → `team_members`, `players`, `games` (`use_dh` boolean for DH rule)
 
 Game recording: `lineups` → `at_bats` → `pitches`, `base_runners`, `runner_events`, `pitching_records`
 

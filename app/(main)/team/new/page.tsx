@@ -1,63 +1,48 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Loader2, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { createTeamAction } from "@/app/(main)/team/actions";
 
 export default function NewTeamPage() {
-  const router = useRouter()
-  const [teamName, setTeamName] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const [teamName, setTeamName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
+    const result = await createTeamAction(teamName);
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
     }
 
-    const { error: insertError } = await supabase
-      .from('teams')
-      .insert({ name: teamName.trim(), owner_id: user.id })
-
-    if (insertError) {
-      setError('チームの作成に失敗しました')
-      setLoading(false)
-      return
+    if (!result.teamId) {
+      router.push("/");
+      return;
     }
 
-    // INSERT 後にトリガーが team_members に追加するため、SELECT は別クエリで行う
-    const { data: team, error: selectError } = await supabase
-      .from('teams')
-      .select('id')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (selectError || !team) {
-      router.push('/')
-      return
-    }
-
-    router.push(`/team/${team.id}`)
-  }
+    router.push(`/team/${result.teamId}`);
+  };
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
-      <Link href="/" className="flex items-center text-muted-foreground hover:text-foreground transition-colors">
+      <Link
+        href="/"
+        prefetch={false}
+        className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+      >
         <ArrowLeft className="mr-1 h-4 w-4" />
         戻る
       </Link>
@@ -93,5 +78,5 @@ export default function NewTeamPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

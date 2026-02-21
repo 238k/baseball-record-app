@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Pencil } from 'lucide-react'
+import { updateTeamNameAction } from '@/app/(main)/team/actions'
 
 interface EditTeamNameDialogProps {
   teamId: string
@@ -32,14 +32,9 @@ export function EditTeamNameDialog({ teamId, currentName }: EditTeamNameDialogPr
     setLoading(true)
     setError(null)
 
-    const supabase = createClient()
-    const { error: updateError } = await supabase
-      .from('teams')
-      .update({ name: name.trim() })
-      .eq('id', teamId)
-
-    if (updateError) {
-      setError('更新に失敗しました')
+    const result = await updateTeamNameAction(teamId, name)
+    if (result.error) {
+      setError(result.error)
       setLoading(false)
       return
     }

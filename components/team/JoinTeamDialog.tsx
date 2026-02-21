@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, UserPlus } from 'lucide-react'
+import { joinTeamAction } from '@/app/(main)/team/actions'
 
 export function JoinTeamDialog() {
   const router = useRouter()
@@ -27,32 +27,9 @@ export function JoinTeamDialog() {
     setLoading(true)
     setError(null)
 
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data: team, error: teamError } = await supabase
-      .from('teams')
-      .select('id, name')
-      .eq('invite_code', inviteCode.trim())
-      .single()
-
-    if (teamError || !team) {
-      setError('招待コードが見つかりません')
-      setLoading(false)
-      return
-    }
-
-    const { error: joinError } = await supabase
-      .from('team_members')
-      .insert({ team_id: team.id, profile_id: user.id, role: 'member' })
-
-    if (joinError) {
-      if (joinError.code === '23505') {
-        setError('すでにこのチームのメンバーです')
-      } else {
-        setError('参加に失敗しました')
-      }
+    const result = await joinTeamAction(inviteCode)
+    if (result.error) {
+      setError(result.error)
       setLoading(false)
       return
     }

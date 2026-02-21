@@ -5,10 +5,13 @@ import { MemberList } from './MemberList'
 vi.mock('@/lib/supabase/client', () => ({
   createClient: vi.fn(() => ({
     from: vi.fn(() => ({
-      update: vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) })),
       delete: vi.fn(() => ({ eq: vi.fn().mockResolvedValue({ error: null }) })),
     })),
   })),
+}))
+
+vi.mock('@/app/(main)/team/actions', () => ({
+  promoteMemberAction: vi.fn().mockResolvedValue({ ok: true }),
 }))
 
 const members = [

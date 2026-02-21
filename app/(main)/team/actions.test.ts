@@ -11,31 +11,25 @@ import { createClient } from '@/lib/supabase/server'
 function makeMockSupabase({
   user = { id: 'user-1' } as { id: string } | null,
   insertResult = { data: { id: 'team-1' }, error: null },
-  teamSelectResult = { data: { id: 'team-1' }, error: null },
-  memberInsertResult = { error: null },
+  rpcResult = { data: 'team-1', error: null },
   updateResult = { error: null },
 } = {}) {
   const single = vi.fn()
   const selectChain = { single }
   const insertChain = { select: vi.fn().mockReturnValue(selectChain) }
-  const memberInsertFn = vi.fn().mockResolvedValue(memberInsertResult)
-  const eqChain = { single: vi.fn().mockResolvedValue(teamSelectResult) }
-  const selectTeamChain = { eq: vi.fn().mockReturnValue(eqChain) }
   const updateEqFn = vi.fn().mockResolvedValue(updateResult)
   const updateChain = { eq: updateEqFn }
 
   single.mockResolvedValue(insertResult)
 
+  const rpc = vi.fn().mockResolvedValue(rpcResult)
+
   const from = vi.fn((table: string) => {
     if (table === 'teams') {
       return {
         insert: vi.fn().mockReturnValue(insertChain),
-        select: vi.fn().mockReturnValue(selectTeamChain),
         update: vi.fn().mockReturnValue(updateChain),
       }
-    }
-    if (table === 'team_members') {
-      return { insert: memberInsertFn }
     }
     return {}
   })
@@ -46,6 +40,7 @@ function makeMockSupabase({
       getUser: vi.fn().mockResolvedValue({ data: { user } }),
     },
     from,
+    rpc,
   }
 }
 
@@ -122,15 +117,15 @@ describe('joinTeamAction', () => {
 
   it('招待コードが見つからない場合エラーを返す', async () => {
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeMockSupabase({ teamSelectResult: { data: null, error: { message: 'not found' } } })
+      makeMockSupabase({ rpcResult: { data: null, error: { message: 'team_not_found' } } })
     )
     const result = await joinTeamAction('INVALID')
     expect(result).toEqual({ error: '招待コードが見つかりません' })
   })
 
-  it('すでにメンバーの場合エラーを返す (duplicate key)', async () => {
+  it('すでにメンバーの場合エラーを返す', async () => {
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeMockSupabase({ memberInsertResult: { error: { code: '23505', message: 'duplicate' } } })
+      makeMockSupabase({ rpcResult: { data: null, error: { message: 'already_member' } } })
     )
     const result = await joinTeamAction('ABCD1234')
     expect(result).toEqual({ error: 'すでにこのチームのメンバーです' })
@@ -138,7 +133,7 @@ describe('joinTeamAction', () => {
 
   it('その他の参加エラーを返す', async () => {
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeMockSupabase({ memberInsertResult: { error: { code: '42000', message: 'other error' } } })
+      makeMockSupabase({ rpcResult: { data: null, error: { message: 'unexpected error' } } })
     )
     const result = await joinTeamAction('ABCD1234')
     expect(result).toEqual({ error: '参加に失敗しました' })

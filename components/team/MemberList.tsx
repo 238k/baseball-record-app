@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { promoteMemberAction } from '@/app/(main)/team/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,11 +30,7 @@ export function MemberList({ members, currentUserId, isAdmin, onChanged }: Membe
 
   const handlePromote = async (memberId: string) => {
     setLoadingId(memberId)
-    const supabase = createClient()
-    await supabase
-      .from('team_members')
-      .update({ role: 'admin' })
-      .eq('id', memberId)
+    await promoteMemberAction(memberId)
     setLoadingId(null)
     onChanged()
   }

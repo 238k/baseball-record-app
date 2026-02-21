@@ -34,6 +34,7 @@ export function JoinTeamDialog() {
       return
     }
 
+    setLoading(false)
     setOpen(false)
     setInviteCode('')
     router.refresh()

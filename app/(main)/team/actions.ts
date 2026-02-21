@@ -42,29 +42,48 @@ export async function joinTeamAction(inviteCode: string) {
   const code = inviteCode.trim();
   if (!code) return { error: "招待コードを入力してください" };
 
-  const { data: team, error: teamError } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("invite_code", code)
-    .single();
+  const { data: teamId, error: rpcError } = await supabase.rpc(
+    "join_team_by_invite_code",
+    { p_invite_code: code }
+  );
 
-  if (teamError || !team) {
-    return { error: "招待コードが見つかりません" };
-  }
-
-  const { error: joinError } = await supabase
-    .from("team_members")
-    .insert({ team_id: team.id, profile_id: user.id, role: "member" });
-
-  if (joinError) {
-    if (joinError.code === "23505") {
+  if (rpcError) {
+    if (rpcError.message.includes("team_not_found")) {
+      return { error: "招待コードが見つかりません" };
+    }
+    if (rpcError.message.includes("already_member")) {
       return { error: "すでにこのチームのメンバーです" };
     }
     return { error: "参加に失敗しました" };
   }
 
   revalidatePath("/");
-  revalidatePath(`/team/${team.id}`);
+  revalidatePath(`/team/${teamId}`);
+  return { ok: true };
+}
+
+export async function promoteMemberAction(memberId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  const { error: rpcError } = await supabase.rpc("promote_team_member", {
+    p_member_id: memberId,
+  });
+
+  if (rpcError) {
+    if (rpcError.message.includes("not_authorized")) {
+      return { error: "管理者権限が必要です" };
+    }
+    if (rpcError.message.includes("member_not_found")) {
+      return { error: "メンバーが見つかりません" };
+    }
+    return { error: "昇格に失敗しました" };
+  }
+
   return { ok: true };
 }
 

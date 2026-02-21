@@ -32,9 +32,17 @@ interface GameCardProps {
     is_home: boolean;
     status: string;
   };
+  score?: { home: number; visitor: number };
 }
 
-export function GameCard({ game }: GameCardProps) {
+export function GameCard({ game, score }: GameCardProps) {
+  const myScore = score
+    ? game.is_home ? score.home : score.visitor
+    : null;
+  const opponentScore = score
+    ? game.is_home ? score.visitor : score.home
+    : null;
+
   return (
     <Card className="hover:bg-accent/50 transition-colors">
       <CardHeader className="pb-2">
@@ -48,6 +56,11 @@ export function GameCard({ game }: GameCardProps) {
         </div>
         <p className="text-sm text-muted-foreground">
           {game.game_date} / {game.is_home ? "ホーム" : "ビジター"}
+          {myScore !== null && opponentScore !== null && (
+            <span className="ml-2 font-medium text-foreground">
+              {myScore} - {opponentScore}
+            </span>
+          )}
         </p>
       </CardHeader>
       <CardContent>

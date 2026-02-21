@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   saveLineupAction,
@@ -99,6 +98,8 @@ export default function LineupPage() {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
 
@@ -213,6 +214,19 @@ export default function LineupPage() {
     load();
   }, [gameId]);
 
+  // Warn on browser-level navigation (tab close, refresh) when there are unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    if (isDirty) {
+      window.addEventListener("beforeunload", handler);
+    }
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const markDirty = useCallback(() => setIsDirty(true), []);
+
   const handleDhToggle = async (newUseDh: boolean) => {
     if (!game || game.use_dh === newUseDh) return;
 
@@ -249,6 +263,7 @@ export default function LineupPage() {
     }
 
     setSaved(false);
+    setIsDirty(true);
   };
 
   const handleSave = async () => {
@@ -331,6 +346,7 @@ export default function LineupPage() {
     }
 
     setSaved(true);
+    setIsDirty(false);
   };
 
   const handleStart = async () => {
@@ -372,16 +388,41 @@ export default function LineupPage() {
     return (a.number ?? "").localeCompare(b.number ?? "");
   });
 
+  const handleNavBack = () => {
+    if (isDirty) {
+      setShowLeaveDialog(true);
+    } else {
+      router.push(`/games/${gameId}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <Link
-        href={`/games/${gameId}`}
-        prefetch={false}
+      <button
+        type="button"
+        onClick={handleNavBack}
         className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="mr-1 h-4 w-4" />
         試合詳細に戻る
-      </Link>
+      </button>
+
+      <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ページを離れますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              保存されていない変更があります。このまま離れると変更は失われます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>戻る</AlertDialogCancel>
+            <AlertDialogAction onClick={() => router.push(`/games/${gameId}`)}>
+              離れる
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">オーダー登録</h1>
@@ -412,7 +453,7 @@ export default function LineupPage() {
         title="自チーム"
         players={players}
         lineup={myTeamLineup}
-        onChange={setMyTeamLineup}
+        onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
         allowUnregistered
       />
 
@@ -439,6 +480,7 @@ export default function LineupPage() {
                     setMyDhPitcher({ playerId: p.id, playerName: p.name });
                   }
                 }
+                markDirty();
               }}
             >
               <SelectTrigger className="text-base h-12">
@@ -462,12 +504,13 @@ export default function LineupPage() {
             {myDhPitcherIsUnregistered && (
               <Input
                 value={myDhPitcher?.playerName ?? ""}
-                onChange={(e) =>
+                onChange={(e) => {
                   setMyDhPitcher({
                     playerId: null,
                     playerName: e.target.value,
-                  })
-                }
+                  });
+                  markDirty();
+                }}
                 placeholder="投手名を入力"
                 className="text-base h-10"
               />
@@ -481,7 +524,7 @@ export default function LineupPage() {
           <LineupEditor
             title={game.opponent_name}
             lineup={opponentLineup}
-            onChange={setOpponentLineup}
+            onChange={(v) => { setOpponentLineup(v); markDirty(); }}
           />
           {game.use_dh && (
             <Card>
@@ -493,12 +536,13 @@ export default function LineupPage() {
               <CardContent>
                 <Input
                   value={opponentDhPitcher?.playerName ?? ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setOpponentDhPitcher({
                       playerId: null,
                       playerName: e.target.value,
-                    })
-                  }
+                    });
+                    markDirty();
+                  }}
                   placeholder="投手名を入力"
                   className="text-base h-12"
                 />
@@ -510,7 +554,7 @@ export default function LineupPage() {
         <Button
           variant="outline"
           className="w-full min-h-12 text-base"
-          onClick={() => setShowOpponentLineup(true)}
+          onClick={() => { setShowOpponentLineup(true); markDirty(); }}
         >
           <ChevronDown className="mr-2 h-4 w-4" />
           {game.opponent_name}のオーダーを入力する

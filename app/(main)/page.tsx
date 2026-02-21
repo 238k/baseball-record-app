@@ -37,6 +37,31 @@ export default async function HomePage() {
         .order("game_date", { ascending: false })
     : { data: [] };
 
+  // Fetch scores for finished games from v_scoreboard
+  const finishedGameIds = (games ?? [])
+    .filter((g) => g.status === "finished")
+    .map((g) => g.id);
+
+  const scoreMap: Record<string, { home: number; visitor: number }> = {};
+  if (finishedGameIds.length > 0) {
+    const { data: scoreRows } = await supabase
+      .from("v_scoreboard")
+      .select("game_id, inning_half, runs")
+      .in("game_id", finishedGameIds);
+
+    for (const row of scoreRows ?? []) {
+      if (!row.game_id) continue;
+      if (!scoreMap[row.game_id]) {
+        scoreMap[row.game_id] = { home: 0, visitor: 0 };
+      }
+      if (row.inning_half === "bottom") {
+        scoreMap[row.game_id].home += row.runs ?? 0;
+      } else {
+        scoreMap[row.game_id].visitor += row.runs ?? 0;
+      }
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Games Section */}
@@ -60,7 +85,11 @@ export default async function HomePage() {
         ) : (
           <div className="grid gap-4">
             {(games ?? []).map((game) => (
-              <GameCard key={game.id} game={game} />
+              <GameCard
+                key={game.id}
+                game={game}
+                score={scoreMap[game.id]}
+              />
             ))}
           </div>
         )}

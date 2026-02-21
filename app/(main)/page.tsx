@@ -1,27 +1,29 @@
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { TeamCard } from '@/components/team/TeamCard'
-import { JoinTeamDialog } from '@/components/team/JoinTeamDialog'
-import { Button } from '@/components/ui/button'
-import { PlusCircle } from 'lucide-react'
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { TeamCard } from "@/components/team/TeamCard";
+import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
+import { Button } from "@/components/ui/button";
+import { PlusCircle } from "lucide-react";
 
 export default async function HomePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!user) redirect('/login')
+  if (!user) redirect("/login");
 
   const { data: memberships } = await supabase
-    .from('team_members')
-    .select('role, teams(id, name)')
-    .eq('profile_id', user.id)
+    .from("team_members")
+    .select("role, teams(id, name)")
+    .eq("profile_id", user.id);
 
   const teams = (memberships ?? []).flatMap((m) => {
-    if (!m.teams) return []
-    const t = m.teams as { id: string; name: string }
-    return [{ id: t.id, name: t.name, role: m.role }]
-  })
+    if (!m.teams) return [];
+    const t = m.teams as { id: string; name: string };
+    return [{ id: t.id, name: t.name, role: m.role }];
+  });
 
   return (
     <div className="space-y-6">
@@ -40,7 +42,9 @@ export default async function HomePage() {
 
       {teams.length === 0 ? (
         <div className="text-center py-16 space-y-4">
-          <p className="text-muted-foreground text-lg">チームがまだありません</p>
+          <p className="text-muted-foreground text-lg">
+            チームがまだありません
+          </p>
           <p className="text-muted-foreground text-sm">
             チームを作成するか、招待コードでチームに参加してください
           </p>
@@ -62,5 +66,5 @@ export default async function HomePage() {
         </div>
       )}
     </div>
-  )
+  );
 }

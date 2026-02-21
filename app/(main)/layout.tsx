@@ -1,39 +1,41 @@
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { Button } from '@/components/ui/button'
-import { LogOut } from 'lucide-react'
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 
 async function signOut() {
-  'use server'
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect('/login')
+  "use server";
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
 }
 
 export default async function MainLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login')
+    redirect("/login");
   }
 
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('display_name')
-    .eq('id', user.id)
-    .single()
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .single();
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold">
+          <Link href="/" prefetch={false} className="text-xl font-bold">
             ⚾ 野球記録
           </Link>
           <div className="flex items-center gap-3">
@@ -49,9 +51,7 @@ export default async function MainLayout({
           </div>
         </div>
       </header>
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {children}
-      </main>
+      <main className="max-w-4xl mx-auto px-4 py-6">{children}</main>
     </div>
-  )
+  );
 }

@@ -2,7 +2,6 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Users, UserCog } from 'lucide-react'
 import { EditTeamNameDialog } from '@/components/team/EditTeamNameDialog'
@@ -35,7 +34,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
-      <Link href="/" className="flex items-center text-muted-foreground hover:text-foreground transition-colors">
+      <Link href="/" prefetch={false} className="flex items-center text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="mr-1 h-4 w-4" />
         チーム一覧に戻る
       </Link>

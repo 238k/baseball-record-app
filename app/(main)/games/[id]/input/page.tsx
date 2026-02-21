@@ -282,25 +282,15 @@ export default function GameInputPage() {
     if (gameState.baseRunners.third)
       baseRunnersBefore.push({ base: "3rd", lineupId: gameState.baseRunners.third.id });
 
-    // Build runner destinations (including batter)
-    const destinations = [
-      ...runnerRows
-        .filter((r) => r.destination !== "stay")
-        .map((r) => ({
-          lineupId: r.lineupId,
-          event: r.destination as "scored" | "out",
-          toBase:
-            r.destination === "scored" || r.destination === "out"
-              ? undefined
-              : (r.destination as "1st" | "2nd" | "3rd"),
-        })),
-    ];
-
-    // Batter destination
-    if (batterDest === "scored") {
-      destinations.push({ lineupId: currentBatter.id, event: "scored" as const, toBase: undefined });
-    } else if (batterDest === "out") {
-      destinations.push({ lineupId: currentBatter.id, event: "out" as const, toBase: undefined });
+    // Build runner events (only scored/out — base advancements are captured by next at-bat's snapshot)
+    const destinations: { lineupId: string; event: "scored" | "out"; toBase: undefined }[] = [];
+    for (const r of runnerRows) {
+      if (r.destination === "scored" || r.destination === "out") {
+        destinations.push({ lineupId: r.lineupId, event: r.destination, toBase: undefined });
+      }
+    }
+    if (batterDest === "scored" || batterDest === "out") {
+      destinations.push({ lineupId: currentBatter.id, event: batterDest, toBase: undefined });
     }
 
     // Determine the result code — we stored it before opening runner dialog

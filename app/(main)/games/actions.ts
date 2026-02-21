@@ -229,6 +229,8 @@ interface RecordAtBatInput {
   lineupId: string;
   result: string;
   rbi: number;
+  pitchCount: number;
+  pitches: ("ball" | "strike" | "foul")[];
   // Runners on base at start of at-bat (snapshot)
   baseRunnersBefore: { base: string; lineupId: string }[];
   // What happened to each runner + batter
@@ -254,6 +256,7 @@ export async function recordAtBatAction(input: RecordAtBatInput) {
       lineup_id: input.lineupId,
       result: input.result,
       rbi: input.rbi,
+      pitch_count: input.pitchCount,
       recorded_by: user.id,
     })
     .select("id")
@@ -293,6 +296,20 @@ export async function recordAtBatAction(input: RecordAtBatInput) {
     );
     if (reError) {
       console.error("runner_events insert error:", reError);
+    }
+  }
+
+  // 4. Insert pitches
+  if (input.pitches.length > 0) {
+    const { error: pitchError } = await supabase.from("pitches").insert(
+      input.pitches.map((result, i) => ({
+        at_bat_id: atBat.id,
+        pitch_number: i + 1,
+        result,
+      }))
+    );
+    if (pitchError) {
+      console.error("pitches insert error:", pitchError);
     }
   }
 

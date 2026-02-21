@@ -45,9 +45,10 @@ const RESULT_GROUPS = [
 interface AtBatInputProps {
   onSelect: (code: string, label: string) => void;
   disabled?: boolean;
+  highlightCode?: string | null;
 }
 
-export function AtBatInput({ onSelect, disabled }: AtBatInputProps) {
+export function AtBatInput({ onSelect, disabled, highlightCode }: AtBatInputProps) {
   return (
     <div className="grid grid-cols-2 gap-4">
       {RESULT_GROUPS.map((group) => (
@@ -56,18 +57,23 @@ export function AtBatInput({ onSelect, disabled }: AtBatInputProps) {
             {group.title}
           </h3>
           <div className="space-y-2">
-            {group.items.map((item) => (
-              <Button
-                key={item.code}
-                size="lg"
-                variant="outline"
-                className="w-full min-h-16 text-lg"
-                disabled={disabled}
-                onClick={() => onSelect(item.code, item.label)}
-              >
-                {item.label}
-              </Button>
-            ))}
+            {group.items.map((item) => {
+              const isHighlighted = highlightCode === item.code;
+              return (
+                <Button
+                  key={item.code}
+                  size="lg"
+                  variant={isHighlighted ? "default" : "outline"}
+                  className={`w-full min-h-16 text-lg ${
+                    isHighlighted ? "ring-2 ring-primary ring-offset-2" : ""
+                  }`}
+                  disabled={disabled}
+                  onClick={() => onSelect(item.code, item.label)}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
           </div>
         </div>
       ))}

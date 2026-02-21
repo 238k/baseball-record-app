@@ -8,6 +8,7 @@ import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { RunnerDisplay } from "@/components/game/RunnerDisplay";
 import { AtBatInput } from "@/components/game/AtBatInput";
+import { PitchCounter, countFromLog, type PitchResult } from "@/components/game/PitchCounter";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -182,6 +183,9 @@ export default function GameInputPage() {
   const lastResultCode = useRef("");
   const [finishing, setFinishing] = useState(false);
 
+  // Pitch count state
+  const [pitchLog, setPitchLog] = useState<PitchResult[]>([]);
+
   // Error state
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -216,6 +220,22 @@ export default function GameInputPage() {
   const fieldingLineup = useMemo(() => {
     return gameState.lineups.filter((l) => l.team_side === fieldingTeamSide);
   }, [gameState.lineups, fieldingTeamSide]);
+
+  // Compute highlight code from pitch count
+  const pitchCounts = useMemo(() => countFromLog(pitchLog), [pitchLog]);
+  const highlightCode = useMemo(() => {
+    if (pitchCounts.balls >= 4) return "BB";
+    if (pitchCounts.strikes >= 3) return "K";
+    return null;
+  }, [pitchCounts]);
+
+  const handlePitch = useCallback((result: PitchResult) => {
+    setPitchLog((prev) => [...prev, result]);
+  }, []);
+
+  const handleUndoPitch = useCallback(() => {
+    setPitchLog((prev) => prev.slice(0, -1));
+  }, []);
 
   // ---- Handlers ----
 
@@ -305,6 +325,8 @@ export default function GameInputPage() {
       lineupId: currentBatter.id,
       result: resultCode,
       rbi: rbiOverride,
+      pitchCount: pitchLog.length,
+      pitches: pitchLog,
       baseRunnersBefore,
       runnerDestinations: destinations,
     });
@@ -317,6 +339,7 @@ export default function GameInputPage() {
     }
 
     setRunnerDialogOpen(false);
+    setPitchLog([]);
 
     // Check if 3 outs reached after this at-bat
     const outsFromResult = countOutsFromResult(resultCode, batterDest, runnerRows);
@@ -345,6 +368,7 @@ export default function GameInputPage() {
     runnerRows,
     batterDest,
     rbiOverride,
+    pitchLog,
   ]);
 
   const handleInningChangeConfirm = useCallback(async () => {
@@ -476,8 +500,16 @@ export default function GameInputPage() {
         </CardContent>
       </Card>
 
+      {/* Pitch counter */}
+      <PitchCounter
+        pitchLog={pitchLog}
+        onPitch={handlePitch}
+        onUndo={handleUndoPitch}
+        disabled={saving}
+      />
+
       {/* At-bat result buttons */}
-      <AtBatInput onSelect={handleResultSelect} disabled={saving} />
+      <AtBatInput onSelect={handleResultSelect} disabled={saving} highlightCode={highlightCode} />
 
       {/* Action buttons */}
       <div className="flex gap-3">

@@ -501,7 +501,8 @@ export default function GameInputPage() {
         </div>
         <InputLockBanner
           holderName={session.currentHolder.display_name}
-          isStale={session.isStale}
+          hasPendingRequest={!!session.myPendingRequest}
+          wasRejected={session.wasRejected}
           onRequestSession={session.requestSession}
         />
       </div>

@@ -24,6 +24,7 @@ function createChainMock(result: QueryResult = { data: null, error: null }) {
     update: vi.fn().mockReturnThis(),
     delete: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    neq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     is: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
@@ -127,13 +128,13 @@ describe("useGameSession", () => {
     expect(result.current.isMySession).toBe(true);
   });
 
-  it("他者のセッション（5分以内）の場合、isMySession=false, isStale=false になる", async () => {
+  it("他者のセッションの場合、isMySession=false で currentHolder が設定される", async () => {
     sessionChain.maybeSingle.mockResolvedValue({
       data: {
         id: "session-1",
         game_id: "game-1",
         profile_id: "user-2",
-        last_active_at: new Date().toISOString(), // just now
+        last_active_at: new Date().toISOString(),
       },
       error: null,
     });
@@ -147,32 +148,7 @@ describe("useGameSession", () => {
     });
 
     expect(result.current.isMySession).toBe(false);
-    expect(result.current.isStale).toBe(false);
     expect(result.current.currentHolder?.display_name).toBe("田中");
-  });
-
-  it("他者のセッション（5分超）の場合、isStale=true になる", async () => {
-    const sixMinAgo = new Date(Date.now() - 6 * 60 * 1000).toISOString();
-    sessionChain.maybeSingle.mockResolvedValue({
-      data: {
-        id: "session-1",
-        game_id: "game-1",
-        profile_id: "user-2",
-        last_active_at: sixMinAgo,
-      },
-      error: null,
-    });
-
-    const { result } = renderHook(() =>
-      useGameSession("game-1", "user-1")
-    );
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    expect(result.current.isMySession).toBe(false);
-    expect(result.current.isStale).toBe(true);
   });
 
   it("requestSession が game_input_requests に insert する", async () => {
@@ -181,7 +157,7 @@ describe("useGameSession", () => {
         id: "session-1",
         game_id: "game-1",
         profile_id: "user-2",
-        last_active_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+        last_active_at: new Date().toISOString(),
       },
       error: null,
     });
@@ -207,13 +183,12 @@ describe("useGameSession", () => {
 
   it("releaseSession がセッションを削除する", async () => {
     // Other user's session so isMySession stays false (no heartbeat interference)
-    const sixMinAgo = new Date(Date.now() - 6 * 60 * 1000).toISOString();
     sessionChain.maybeSingle.mockResolvedValue({
       data: {
         id: "session-1",
         game_id: "game-1",
         profile_id: "user-2",
-        last_active_at: sixMinAgo,
+        last_active_at: new Date().toISOString(),
       },
       error: null,
     });

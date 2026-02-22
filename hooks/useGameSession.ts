@@ -24,14 +24,16 @@ export interface UseGameSessionReturn {
   isMySession: boolean;
   /** Profile of the current session holder */
   currentHolder: Profile | null;
-  /** Whether the session is stale (>5 min inactive) */
-  isStale: boolean;
   /** Request input control */
   requestSession: () => Promise<void>;
   /** Release input control */
   releaseSession: () => Promise<void>;
   /** Pending request received (for current holder) */
   pendingRequest: (GameInputRequest & { requester_name: string }) | null;
+  /** Pending request sent by current user */
+  myPendingRequest: { id: string; created_at: string } | null;
+  /** Whether the user's latest request was rejected */
+  wasRejected: boolean;
   /** Approve a pending request */
   approveRequest: (requestId: string) => Promise<void>;
   /** Reject a pending request */
@@ -40,7 +42,6 @@ export interface UseGameSessionReturn {
   loading: boolean;
 }
 
-const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 const HEARTBEAT_INTERVAL_MS = 5 * 1000; // 5 seconds
 const AUTO_APPROVE_TIMEOUT_MS = 60 * 1000; // 60 seconds
 
@@ -49,8 +50,9 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
 
   const [isMySession, setIsMySession] = useState(false);
   const [currentHolder, setCurrentHolder] = useState<Profile | null>(null);
-  const [isStale, setIsStale] = useState(false);
   const [pendingRequest, setPendingRequest] = useState<(GameInputRequest & { requester_name: string }) | null>(null);
+  const [myPendingRequest, setMyPendingRequest] = useState<{ id: string; created_at: string } | null>(null);
+  const [wasRejected, setWasRejected] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,8 +81,9 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
         sessionIdRef.current = newSession.id;
         setIsMySession(true);
         setCurrentHolder({ id: userId, display_name: "" });
-        setIsStale(false);
         setPendingRequest(null);
+        setMyPendingRequest(null);
+        setWasRejected(false);
       }
       setLoading(false);
       return;
@@ -92,14 +95,16 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
       // My session
       setIsMySession(true);
       setCurrentHolder({ id: userId, display_name: "" });
-      setIsStale(false);
+      setMyPendingRequest(null);
+      setWasRejected(false);
 
-      // Check for pending requests addressed to me
+      // Check for pending requests addressed to me (from other users)
       const { data: requests } = await supabase
         .from("game_input_requests")
         .select("id, game_id, requester_id, status, created_at")
         .eq("game_id", gameId)
         .eq("status", "pending")
+        .neq("requester_id", userId)
         .order("created_at", { ascending: false })
         .limit(1);
 
@@ -131,12 +136,33 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
         .single();
 
       setCurrentHolder(profile ?? { id: session.profile_id, display_name: "不明" });
-
-      // Check staleness
-      const lastActive = new Date(session.last_active_at).getTime();
-      const now = Date.now();
-      setIsStale(now - lastActive > STALE_THRESHOLD_MS);
       setPendingRequest(null);
+
+      // Check if current user has a pending or recently rejected request
+      const { data: myReqs } = await supabase
+        .from("game_input_requests")
+        .select("id, created_at, status")
+        .eq("game_id", gameId)
+        .eq("requester_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (myReqs && myReqs.length > 0) {
+        const latest = myReqs[0];
+        if (latest.status === "pending") {
+          setMyPendingRequest({ id: latest.id, created_at: latest.created_at });
+          setWasRejected(false);
+        } else if (latest.status === "rejected") {
+          setMyPendingRequest(null);
+          setWasRejected(true);
+        } else {
+          setMyPendingRequest(null);
+          setWasRejected(false);
+        }
+      } else {
+        setMyPendingRequest(null);
+        setWasRejected(false);
+      }
     }
 
     setLoading(false);
@@ -232,7 +258,7 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
     };
   }, [isMySession, gameId, userId, supabase]);
 
-  // ---- Auto-approve timeout ----
+  // ---- Auto-approve timeout (holder side) ----
   useEffect(() => {
     if (!isMySession) {
       if (autoApproveRef.current) {
@@ -281,6 +307,35 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
       }
     };
   }, [isMySession, gameId, supabase]);
+
+  // ---- Auto-approve from requester side ----
+  useEffect(() => {
+    if (!myPendingRequest || isMySession || !userId) return;
+
+    const timer = setInterval(async () => {
+      const elapsed = Date.now() - new Date(myPendingRequest.created_at).getTime();
+      if (elapsed >= AUTO_APPROVE_TIMEOUT_MS) {
+        // Auto-approve: update request and transfer session
+        await supabase
+          .from("game_input_requests")
+          .update({ status: "approved" })
+          .eq("id", myPendingRequest.id);
+
+        await supabase
+          .from("game_input_sessions")
+          .update({
+            profile_id: userId,
+            last_active_at: new Date().toISOString(),
+          })
+          .eq("game_id", gameId);
+
+        setMyPendingRequest(null);
+        // Realtime will trigger fetchSession to update state
+      }
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [myPendingRequest, isMySession, gameId, userId, supabase]);
 
   // ---- Realtime subscription ----
   useEffect(() => {
@@ -365,10 +420,11 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
   return {
     isMySession,
     currentHolder,
-    isStale,
     requestSession,
     releaseSession,
     pendingRequest,
+    myPendingRequest,
+    wasRejected,
     approveRequest,
     rejectRequest,
     loading,

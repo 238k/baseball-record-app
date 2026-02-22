@@ -43,6 +43,10 @@ next-env.d.ts
 
 # claude code
 .claude/worktrees/
+.claude/plans/
+
+# playwright mcp
+.playwright-mcp/
 
 # supabase
 supabase/.temp/

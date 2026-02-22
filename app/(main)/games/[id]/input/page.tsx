@@ -468,26 +468,26 @@ export default function GameInputPage() {
     router.push(`/games/${gameId}`);
   }, [gameId, router]);
 
-  // Check if at least one runner is on base (for steal button)
-  const hasRunners = !!(gameState.baseRunners.first || gameState.baseRunners.second || gameState.baseRunners.third);
-
-  // Build runner options for steal dialog
+  // Build runner options for steal dialog (only runners whose next base is empty)
   const stealRunnerOptions = useMemo(() => {
     const options: { lineupId: string; playerName: string; fromBase: "1st" | "2nd" | "3rd" }[] = [];
-    if (gameState.baseRunners.first) {
+    // 1st → 2nd: only if 2nd is empty
+    if (gameState.baseRunners.first && !gameState.baseRunners.second) {
       options.push({
         lineupId: gameState.baseRunners.first.id,
         playerName: gameState.baseRunners.first.player_name ?? "—",
         fromBase: "1st",
       });
     }
-    if (gameState.baseRunners.second) {
+    // 2nd → 3rd: only if 3rd is empty
+    if (gameState.baseRunners.second && !gameState.baseRunners.third) {
       options.push({
         lineupId: gameState.baseRunners.second.id,
         playerName: gameState.baseRunners.second.player_name ?? "—",
         fromBase: "2nd",
       });
     }
+    // 3rd → home: always possible
     if (gameState.baseRunners.third) {
       options.push({
         lineupId: gameState.baseRunners.third.id,
@@ -697,7 +697,7 @@ export default function GameInputPage() {
           variant="outline"
           size="lg"
           className="flex-1 min-h-16 text-base"
-          disabled={!hasRunners}
+          disabled={stealRunnerOptions.length === 0}
           onClick={() => {
             setShowStealDialog(true);
             setStealLineupId("");

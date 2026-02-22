@@ -394,13 +394,17 @@ function computeRunnersAfterAtBat(
   // Apply stolen_base events: advance runners who stole successfully
   const stolenBaseIds = new Set(events.filter((e) => e.event_type === "stolen_base").map((e) => e.lineup_id));
   for (const stealId of stolenBaseIds) {
-    // Find which base this runner is on and advance them
+    // Find which base this runner is on and advance them (only if destination is empty)
     if (after.first && after.first.id === stealId) {
-      after.second = after.first;
-      after.first = null;
+      if (!after.second) {
+        after.second = after.first;
+        after.first = null;
+      }
     } else if (after.second && after.second.id === stealId) {
-      after.third = after.second;
-      after.second = null;
+      if (!after.third) {
+        after.third = after.second;
+        after.second = null;
+      }
     }
     // 3rd → home is handled by scored event (already removed from bases)
   }

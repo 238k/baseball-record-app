@@ -15,6 +15,19 @@ export default async function TeamStatsPage({
 
   const supabase = await createClient()
 
+  // Verify team membership
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) notFound()
+
+  const { data: membership } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("profile_id", user.id)
+    .single()
+
+  if (!membership) notFound()
+
   const [teamResult, batterResult, pitcherResult] = await Promise.all([
     supabase.from("teams").select("name").eq("id", teamId).single(),
     supabase

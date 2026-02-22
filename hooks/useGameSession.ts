@@ -58,9 +58,11 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoApproveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
 
-  // ---- Fetch session state ----
-  const fetchSession = useCallback(async () => {
+  // ---- Core: read session state and update React state ----
+  // createSession: if true, auto-create a session when none exists (initial load only)
+  const syncSessionState = useCallback(async (createSession: boolean) => {
     if (!userId) return;
 
     const { data: session } = await supabase
@@ -70,20 +72,29 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
       .maybeSingle();
 
     if (!session) {
-      // No session exists — create one for this user
-      const { data: newSession } = await supabase
-        .from("game_input_sessions")
-        .insert({ game_id: gameId, profile_id: userId })
-        .select("id")
-        .single();
+      if (createSession) {
+        // No session exists — create one for this user
+        const { data: newSession } = await supabase
+          .from("game_input_sessions")
+          .insert({ game_id: gameId, profile_id: userId })
+          .select("id")
+          .single();
 
-      if (newSession) {
-        sessionIdRef.current = newSession.id;
-        setIsMySession(true);
-        setCurrentHolder({ id: userId, display_name: "" });
+        if (newSession) {
+          sessionIdRef.current = newSession.id;
+          setIsMySession(true);
+          setCurrentHolder({ id: userId, display_name: "" });
+          setPendingRequest(null);
+          setMyPendingRequest(null);
+          setWasRejected(false);
+        }
+      } else {
+        // Session was removed (e.g. force release) — reflect that
+        sessionIdRef.current = null;
+        setIsMySession(false);
+        setCurrentHolder(null);
         setPendingRequest(null);
         setMyPendingRequest(null);
-        setWasRejected(false);
       }
       setLoading(false);
       return;
@@ -168,6 +179,10 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
     setLoading(false);
   }, [gameId, userId, supabase]);
 
+  // Convenience wrappers
+  const fetchSession = useCallback(() => syncSessionState(true), [syncSessionState]);
+  const refreshSession = useCallback(() => syncSessionState(false), [syncSessionState]);
+
   // ---- Request session ----
   const requestSession = useCallback(async () => {
     if (!userId) return;
@@ -214,12 +229,13 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
       .single();
 
     if (req) {
-      // Transfer session: update profile_id and reset last_active_at
+      // Transfer session: update profile_id, reset last_active_at and pitch log
       await supabase
         .from("game_input_sessions")
         .update({
           profile_id: req.requester_id,
           last_active_at: new Date().toISOString(),
+          current_pitch_log: [],
         })
         .eq("game_id", gameId);
     }
@@ -291,6 +307,7 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
             .update({
               profile_id: req.requester_id,
               last_active_at: new Date().toISOString(),
+              current_pitch_log: [],
             })
             .eq("game_id", gameId);
 
@@ -326,6 +343,7 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
           .update({
             profile_id: userId,
             last_active_at: new Date().toISOString(),
+            current_pitch_log: [],
           })
           .eq("game_id", gameId);
 
@@ -338,6 +356,8 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
   }, [myPendingRequest, isMySession, gameId, userId, supabase]);
 
   // ---- Realtime subscription ----
+  // Use refreshSession (no auto-create) to prevent re-creating a session
+  // that was intentionally deleted (e.g. force release by admin)
   useEffect(() => {
     if (!userId) return;
 
@@ -352,7 +372,7 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
           filter: `game_id=eq.${gameId}`,
         },
         () => {
-          fetchSession();
+          refreshSession();
         }
       )
       .on(
@@ -364,7 +384,7 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
           filter: `game_id=eq.${gameId}`,
         },
         () => {
-          fetchSession();
+          refreshSession();
         }
       )
       .subscribe();
@@ -372,28 +392,29 @@ export function useGameSession(gameId: string, userId: string | null): UseGameSe
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameId, userId, supabase, fetchSession]);
+  }, [gameId, userId, supabase, refreshSession]);
 
-  // ---- Initial fetch ----
+  // ---- Initial fetch + cache access token for beforeunload ----
   useEffect(() => {
-    fetchSession();
-  }, [fetchSession]);
+    (async () => {
+      // Cache the access token so beforeunload can use it synchronously
+      const { data: { session } } = await supabase.auth.getSession();
+      accessTokenRef.current = session?.access_token ?? null;
+      await fetchSession();
+    })();
+  }, [fetchSession, supabase]);
 
   // ---- Cleanup on unmount: release session ----
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!userId) return;
-      // Use navigator.sendBeacon for reliability on tab close
+      if (!userId || !accessTokenRef.current) return;
+      // Use fetch with keepalive for reliability on tab close
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/game_input_sessions?game_id=eq.${gameId}&profile_id=eq.${userId}`;
-      const headers = {
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        Authorization: `Bearer ${document.cookie.match(/sb-[^=]+-auth-token=([^;]+)/)?.[1] ?? ""}`,
-      };
-      // sendBeacon doesn't support DELETE, so we use fetch with keepalive
       fetch(url, {
         method: "DELETE",
         headers: {
-          ...headers,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          Authorization: `Bearer ${accessTokenRef.current}`,
           "Content-Type": "application/json",
         },
         keepalive: true,

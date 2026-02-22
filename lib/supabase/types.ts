@@ -207,6 +207,7 @@ export type Database = {
       game_input_sessions: {
         Row: {
           created_at: string
+          current_pitch_log: Json
           game_id: string
           id: string
           last_active_at: string
@@ -214,6 +215,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_pitch_log?: Json
           game_id: string
           id?: string
           last_active_at?: string
@@ -221,6 +223,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_pitch_log?: Json
           game_id?: string
           id?: string
           last_active_at?: string

@@ -200,6 +200,18 @@ export default function GameInputPage() {
   // Pitch count state
   const [pitchLog, setPitchLog] = useState<PitchResult[]>([]);
 
+  // Sync pitch log to DB for realtime spectate display
+  const syncPitchLogToDb = useCallback(
+    async (log: PitchResult[]) => {
+      const supabase = createClient();
+      await supabase
+        .from("game_input_sessions")
+        .update({ current_pitch_log: log })
+        .eq("game_id", gameId);
+    },
+    [gameId]
+  );
+
   // Error state
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -249,6 +261,7 @@ export default function GameInputPage() {
   const handlePitch = useCallback((result: PitchResult) => {
     const newLog = [...pitchLog, result];
     setPitchLog(newLog);
+    syncPitchLogToDb(newLog);
 
     // Auto-result: check if count is full after this pitch
     const counts = countFromLog(newLog);
@@ -263,11 +276,15 @@ export default function GameInputPage() {
       }
       setActionError(null);
     }
-  }, [pitchLog]);
+  }, [pitchLog, syncPitchLogToDb]);
 
   const handleUndoPitch = useCallback(() => {
-    setPitchLog((prev) => prev.slice(0, -1));
-  }, []);
+    setPitchLog((prev) => {
+      const newLog = prev.slice(0, -1);
+      syncPitchLogToDb(newLog);
+      return newLog;
+    });
+  }, [syncPitchLogToDb]);
 
   // ---- Handlers ----
 
@@ -372,6 +389,7 @@ export default function GameInputPage() {
 
     setRunnerDialogOpen(false);
     setPitchLog([]);
+    syncPitchLogToDb([]);
 
     // Check if 3 outs reached after this at-bat
     const outsFromResult = countOutsFromResult(resultCode, batterDest, runnerRows);
@@ -401,6 +419,7 @@ export default function GameInputPage() {
     batterDest,
     rbiOverride,
     pitchLog,
+    syncPitchLogToDb,
   ]);
 
   const handleInningChangeConfirm = useCallback(async () => {
@@ -481,6 +500,30 @@ export default function GameInputPage() {
     return (
       <div className="flex justify-center py-16">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Session released (e.g. force release by admin) — no session exists
+  if (!session.isMySession && !session.currentHolder && !session.loading) {
+    return (
+      <div className="space-y-4 pb-8">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.push(`/games/${gameId}`)}
+            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            試合詳細
+          </button>
+        </div>
+        <div className="text-center space-y-4 py-8">
+          <p className="text-muted-foreground">入力セッションが解除されました</p>
+          <Button onClick={() => router.refresh()}>
+            再接続する
+          </Button>
+        </div>
       </div>
     );
   }

@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, ClipboardEdit, Play } from "lucide-react";
+import { ArrowLeft, ClipboardEdit, Eye, Play } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "試合前",
@@ -169,13 +169,37 @@ export default async function GameDetailPage({
           </Link>
         )}
         {game.status === "in_progress" && (
-          <Link href={`/games/${gameId}/input`} className="flex-1">
+          <>
+            <Link href={`/games/${gameId}/input`} className="flex-1">
+              <Button
+                size="lg"
+                className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
+              >
+                <Play className="mr-2 h-5 w-5" />
+                記録を入力する
+              </Button>
+            </Link>
+            <Link href={`/games/${gameId}/spectate`} className="flex-1">
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full min-h-16 text-lg"
+              >
+                <Eye className="mr-2 h-5 w-5" />
+                観戦する
+              </Button>
+            </Link>
+          </>
+        )}
+        {game.status === "finished" && (
+          <Link href={`/games/${gameId}/spectate`} className="flex-1">
             <Button
               size="lg"
-              className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
+              variant="outline"
+              className="w-full min-h-16 text-lg"
             >
-              <Play className="mr-2 h-5 w-5" />
-              記録を入力する
+              <Eye className="mr-2 h-5 w-5" />
+              試合結果を見る
             </Button>
           </Link>
         )}

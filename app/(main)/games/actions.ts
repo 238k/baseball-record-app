@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getPitchingStatsDelta } from "./pitching-stats";
 
 interface LineupEntry {
   battingOrder: number;
@@ -310,6 +311,56 @@ export async function recordAtBatAction(input: RecordAtBatInput) {
     );
     if (pitchError) {
       console.error("pitches insert error:", pitchError);
+    }
+  }
+
+  // 5. Update pitching_records for the fielding team's active pitcher
+  const delta = getPitchingStatsDelta(input.result, input.runnerDestinations);
+  const hasDelta =
+    delta.outs > 0 ||
+    delta.hits > 0 ||
+    delta.runs > 0 ||
+    delta.walks > 0 ||
+    delta.strikeouts > 0;
+
+  if (hasDelta) {
+    const fieldingSide = input.inningHalf === "top" ? "home" : "visitor";
+
+    // Find active pitcher record for the fielding side
+    const { data: openRecords } = await supabase
+      .from("pitching_records")
+      .select("id, lineup_id, outs_recorded, hits, runs, earned_runs, walks, strikeouts")
+      .eq("game_id", input.gameId)
+      .is("inning_to", null);
+
+    if (openRecords && openRecords.length > 0) {
+      // Get fielding team's lineup IDs
+      const { data: fieldingLineups } = await supabase
+        .from("lineups")
+        .select("id")
+        .eq("game_id", input.gameId)
+        .eq("team_side", fieldingSide);
+
+      const fieldingIds = new Set((fieldingLineups ?? []).map((l) => l.id));
+      const pitcherRecord = openRecords.find((r) => fieldingIds.has(r.lineup_id));
+
+      if (pitcherRecord) {
+        const { error: updateError } = await supabase
+          .from("pitching_records")
+          .update({
+            outs_recorded: pitcherRecord.outs_recorded + delta.outs,
+            hits: pitcherRecord.hits + delta.hits,
+            runs: pitcherRecord.runs + delta.runs,
+            earned_runs: pitcherRecord.earned_runs + delta.earnedRuns,
+            walks: pitcherRecord.walks + delta.walks,
+            strikeouts: pitcherRecord.strikeouts + delta.strikeouts,
+          })
+          .eq("id", pitcherRecord.id);
+
+        if (updateError) {
+          console.error("pitching_records update error:", updateError);
+        }
+      }
     }
   }
 

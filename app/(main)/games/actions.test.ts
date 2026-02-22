@@ -4,6 +4,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
 import { createGameAction, saveLineupAction, startGameAction } from './actions'
+import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
@@ -252,5 +253,176 @@ describe('startGameAction', () => {
     )
     const result = await startGameAction('game-1')
     expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── getPitchingStatsDelta ──────────────────────────────────────────────────
+
+describe('getPitchingStatsDelta', () => {
+  it('単打: hits=1, outs=0', () => {
+    const result = getPitchingStatsDelta('1B', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 1, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('二塁打: hits=1', () => {
+    const result = getPitchingStatsDelta('2B', [
+      { lineupId: 'l1', event: 'stay', toBase: '2nd' },
+    ])
+    expect(result.hits).toBe(1)
+  })
+
+  it('三塁打: hits=1', () => {
+    const result = getPitchingStatsDelta('3B', [
+      { lineupId: 'l1', event: 'stay', toBase: '3rd' },
+    ])
+    expect(result.hits).toBe(1)
+  })
+
+  it('本塁打: hits=1, runs=1（打者生還）', () => {
+    const result = getPitchingStatsDelta('HR', [
+      { lineupId: 'l1', event: 'scored' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 1, runs: 1, earnedRuns: 1, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('満塁本塁打: hits=1, runs=4', () => {
+    const result = getPitchingStatsDelta('HR', [
+      { lineupId: 'r1', event: 'scored' },
+      { lineupId: 'r2', event: 'scored' },
+      { lineupId: 'r3', event: 'scored' },
+      { lineupId: 'l1', event: 'scored' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 1, runs: 4, earnedRuns: 4, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('四球: walks=1', () => {
+    const result = getPitchingStatsDelta('BB', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 0, runs: 0, earnedRuns: 0, walks: 1, strikeouts: 0,
+    })
+  })
+
+  it('敬遠: walks=1', () => {
+    const result = getPitchingStatsDelta('IBB', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+    ])
+    expect(result.walks).toBe(1)
+  })
+
+  it('死球: 全て0', () => {
+    const result = getPitchingStatsDelta('HBP', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('空振り三振: outs=1, strikeouts=1', () => {
+    const result = getPitchingStatsDelta('K', [
+      { lineupId: 'l1', event: 'out' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 1,
+    })
+  })
+
+  it('見逃し三振: outs=1, strikeouts=1', () => {
+    const result = getPitchingStatsDelta('KK', [
+      { lineupId: 'l1', event: 'out' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 1,
+    })
+  })
+
+  it('ゴロアウト: outs=1', () => {
+    const result = getPitchingStatsDelta('GO', [
+      { lineupId: 'l1', event: 'out' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('フライアウト: outs=1', () => {
+    const result = getPitchingStatsDelta('FO', [
+      { lineupId: 'l1', event: 'out' },
+    ])
+    expect(result.outs).toBe(1)
+  })
+
+  it('ライナーアウト: outs=1', () => {
+    const result = getPitchingStatsDelta('LO', [
+      { lineupId: 'l1', event: 'out' },
+    ])
+    expect(result.outs).toBe(1)
+  })
+
+  it('併殺打: outs=2（打者+走者）', () => {
+    const result = getPitchingStatsDelta('DP', [
+      { lineupId: 'l1', event: 'out' },
+      { lineupId: 'r1', event: 'out' },
+    ])
+    expect(result).toEqual({
+      outs: 2, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('犠牲フライ: outs=1, runs=1', () => {
+    const result = getPitchingStatsDelta('SF', [
+      { lineupId: 'l1', event: 'out' },
+      { lineupId: 'r1', event: 'scored' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 1, earnedRuns: 1, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('犠打: outs=1', () => {
+    const result = getPitchingStatsDelta('SH', [
+      { lineupId: 'l1', event: 'out' },
+      { lineupId: 'r1', event: 'stay', toBase: '2nd' },
+    ])
+    expect(result.outs).toBe(1)
+  })
+
+  it('フィルダースチョイス: outs=1（走者アウト、打者セーフ）', () => {
+    const result = getPitchingStatsDelta('FC', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+      { lineupId: 'r1', event: 'out' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('エラー: 全て0（走者移動なし）', () => {
+    const result = getPitchingStatsDelta('E', [
+      { lineupId: 'l1', event: 'stay', toBase: '1st' },
+    ])
+    expect(result).toEqual({
+      outs: 0, hits: 0, runs: 0, earnedRuns: 0, walks: 0, strikeouts: 0,
+    })
+  })
+
+  it('ゴロアウトで走者が生還: outs=1, runs=1', () => {
+    const result = getPitchingStatsDelta('GO', [
+      { lineupId: 'l1', event: 'out' },
+      { lineupId: 'r1', event: 'scored' },
+    ])
+    expect(result).toEqual({
+      outs: 1, hits: 0, runs: 1, earnedRuns: 1, walks: 0, strikeouts: 0,
+    })
   })
 })

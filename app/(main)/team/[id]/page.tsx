@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Users, UserCog } from 'lucide-react'
 import { EditTeamNameDialog } from '@/components/team/EditTeamNameDialog'
+import { ActiveSessionsSection } from '@/components/team/ActiveSessionsSection'
 
 export default async function TeamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -31,6 +32,32 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   if (!membership) notFound()
 
   const isAdmin = membership.role === 'admin'
+
+  // Fetch active input sessions for admin
+  let activeSessions: {
+    gameId: string;
+    opponentName: string;
+    gameDate: string;
+    holderName: string;
+    lastActiveAt: string;
+  }[] = []
+
+  if (isAdmin) {
+    const { data: sessions } = await supabase
+      .from('game_input_sessions')
+      .select('game_id, profile_id, last_active_at, games(opponent_name, game_date), profiles(display_name)')
+      .in('game_id', (
+        await supabase.from('games').select('id').eq('team_id', id)
+      ).data?.map((g) => g.id) ?? [])
+
+    activeSessions = (sessions ?? []).map((s) => ({
+      gameId: s.game_id,
+      opponentName: (s.games as { opponent_name: string } | null)?.opponent_name ?? '不明',
+      gameDate: (s.games as { game_date: string } | null)?.game_date ?? '',
+      holderName: (s.profiles as { display_name: string } | null)?.display_name ?? '不明',
+      lastActiveAt: s.last_active_at,
+    }))
+  }
 
   return (
     <div className="space-y-6">
@@ -83,6 +110,10 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
           </Card>
         </Link>
       </div>
+
+      {isAdmin && (
+        <ActiveSessionsSection teamId={id} sessions={activeSessions} />
+      )}
     </div>
   )
 }

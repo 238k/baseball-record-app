@@ -1,14 +1,18 @@
 "use client";
 
-import { useCallback, useRef, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameState, type BaseRunners } from "@/hooks/useGameState";
+import { useGameSession } from "@/hooks/useGameSession";
 import { recordAtBatAction, changePitcherAction, finishGameAction } from "@/app/(main)/games/actions";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { RunnerDisplay } from "@/components/game/RunnerDisplay";
 import { AtBatInput } from "@/components/game/AtBatInput";
 import { PitchCounter, countFromLog, type PitchResult } from "@/components/game/PitchCounter";
+import { InputLockBanner } from "@/components/game/InputLockBanner";
+import { SessionRequestModal } from "@/components/game/SessionRequestModal";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -150,7 +154,17 @@ export default function GameInputPage() {
   const router = useRouter();
   const gameId = params.id as string;
 
+  // Auth: get current user id
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserId(user?.id ?? null);
+    });
+  }, []);
+
   const gameState = useGameState(gameId);
+  const session = useGameSession(gameId, userId);
 
   // Confirm dialog state
   const [pendingResult, setPendingResult] = useState<{
@@ -462,6 +476,38 @@ export default function GameInputPage() {
     );
   }
 
+  // Session loading
+  if (session.loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Locked by another user
+  if (!session.isMySession && session.currentHolder) {
+    return (
+      <div className="space-y-4 pb-8">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.push(`/games/${gameId}`)}
+            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            試合詳細
+          </button>
+        </div>
+        <InputLockBanner
+          holderName={session.currentHolder.display_name}
+          isStale={session.isStale}
+          onRequestSession={session.requestSession}
+        />
+      </div>
+    );
+  }
+
   const positionLabel = currentBatter?.position ?? "";
   const numberPrefix = currentBatter?.player_number ? `#${currentBatter.player_number} ` : "";
   const batterDisplay = currentBatter
@@ -470,6 +516,17 @@ export default function GameInputPage() {
 
   return (
     <div className="space-y-4 pb-8">
+      {/* Session request modal (shown to current holder) */}
+      {session.pendingRequest && (
+        <SessionRequestModal
+          requesterName={session.pendingRequest.requester_name}
+          requestId={session.pendingRequest.id}
+          requestCreatedAt={session.pendingRequest.created_at}
+          onApprove={session.approveRequest}
+          onReject={session.rejectRequest}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <button

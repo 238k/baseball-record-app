@@ -87,6 +87,48 @@ export async function promoteMemberAction(memberId: string) {
   return { ok: true };
 }
 
+export async function forceReleaseSessionAction(gameId: string, teamId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Check admin role
+  const { data: membership } = await supabase
+    .from("team_members")
+    .select("role")
+    .eq("team_id", teamId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!membership || membership.role !== "admin") {
+    return { error: "管理者権限が必要です" };
+  }
+
+  // Delete the session
+  const { error } = await supabase
+    .from("game_input_sessions")
+    .delete()
+    .eq("game_id", gameId);
+
+  if (error) {
+    console.error("forceReleaseSession error:", error);
+    return { error: "セッションの解除に失敗しました" };
+  }
+
+  // Also reject any pending requests
+  await supabase
+    .from("game_input_requests")
+    .update({ status: "rejected" })
+    .eq("game_id", gameId)
+    .eq("status", "pending");
+
+  revalidatePath(`/team/${teamId}`);
+  return { ok: true };
+}
+
 export async function updateTeamNameAction(teamId: string, teamName: string) {
   const supabase = await createClient();
   const {

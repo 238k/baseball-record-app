@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowLeft, ClipboardEdit, Eye, Play } from "lucide-react";
+import { GameStatsTabs } from "@/components/stats/GameStatsTabs";
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "試合前",
@@ -57,11 +58,39 @@ export default async function GameDetailPage({
 
   if (!game) notFound();
 
-  const { data: lineups } = await supabase
-    .from("lineups")
-    .select("batting_order, team_side, player_name, position")
-    .eq("game_id", gameId)
-    .order("batting_order");
+  const showStats = game.status === "in_progress" || game.status === "finished";
+
+  // Fetch lineups, team, and stats in parallel
+  const [lineupsResult, teamResult, batterResult, pitcherResult] = await Promise.all([
+    supabase
+      .from("lineups")
+      .select("batting_order, team_side, player_name, position")
+      .eq("game_id", gameId)
+      .order("batting_order"),
+    supabase
+      .from("teams")
+      .select("name")
+      .eq("id", game.team_id)
+      .single(),
+    showStats
+      ? supabase
+          .from("v_batter_game_stats")
+          .select("*")
+          .eq("game_id", gameId)
+          .order("batting_order")
+      : null,
+    showStats
+      ? supabase
+          .from("v_pitcher_game_stats")
+          .select("*")
+          .eq("game_id", gameId)
+      : null,
+  ]);
+
+  const lineups = lineupsResult.data;
+  const team = teamResult.data;
+  const batterStats = batterResult?.data ?? [];
+  const pitcherStats = pitcherResult?.data ?? [];
 
   const myTeamSide = game.is_home ? "home" : "visitor";
   const opponentSide = game.is_home ? "visitor" : "home";
@@ -96,12 +125,31 @@ export default async function GameDetailPage({
   const opponentLineup = hasRealOpponentData ? opponentLineupRaw : [];
   const showOpponentPitcher = hasRealOpponentData && opponentDhPitcher != null;
 
-  // Fetch team name
-  const { data: team } = await supabase
-    .from("teams")
-    .select("name")
-    .eq("id", game.team_id)
-    .single();
+  const lineupContent = (
+    <>
+      {myLineup.length > 0 && (
+        <LineupTable
+          title={team?.name ?? "自チーム"}
+          lineup={myLineup}
+          dhPitcher={myDhPitcher}
+        />
+      )}
+
+      {opponentLineup.length > 0 && (
+        <LineupTable
+          title={game.opponent_name}
+          lineup={opponentLineup}
+          dhPitcher={showOpponentPitcher ? opponentDhPitcher : null}
+        />
+      )}
+
+      {myLineup.length === 0 && opponentLineup.length === 0 && (
+        <p className="text-muted-foreground text-center py-8">
+          オーダーが未登録です
+        </p>
+      )}
+    </>
+  );
 
   return (
     <div className="space-y-6">
@@ -133,26 +181,14 @@ export default async function GameDetailPage({
         </div>
       </div>
 
-      {myLineup.length > 0 && (
-        <LineupTable
-          title={team?.name ?? "自チーム"}
-          lineup={myLineup}
-          dhPitcher={myDhPitcher}
+      {showStats ? (
+        <GameStatsTabs
+          lineupContent={lineupContent}
+          batterStats={batterStats}
+          pitcherStats={pitcherStats}
         />
-      )}
-
-      {opponentLineup.length > 0 && (
-        <LineupTable
-          title={game.opponent_name}
-          lineup={opponentLineup}
-          dhPitcher={showOpponentPitcher ? opponentDhPitcher : null}
-        />
-      )}
-
-      {myLineup.length === 0 && opponentLineup.length === 0 && (
-        <p className="text-muted-foreground text-center py-8">
-          オーダーが未登録です
-        </p>
+      ) : (
+        lineupContent
       )}
 
       <div className="flex gap-3">
@@ -222,7 +258,7 @@ function LineupTable({
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="px-2">
         <Table>
           <TableHeader>
             <TableRow>

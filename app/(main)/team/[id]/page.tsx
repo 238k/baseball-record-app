@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Users, UserCog } from 'lucide-react'
+import { ArrowLeft, Users, UserCog, BarChart3 } from 'lucide-react'
 import { EditTeamNameDialog } from '@/components/team/EditTeamNameDialog'
 import { ActiveSessionsSection } from '@/components/team/ActiveSessionsSection'
 
@@ -106,6 +106,16 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
               <UserCog className="h-10 w-10 text-muted-foreground" />
               <span className="text-xl font-semibold">招待・メンバー管理</span>
               <span className="text-sm text-muted-foreground">招待コード・メンバー一覧</span>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href={`/team/${id}/stats`}>
+          <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
+            <CardContent className="pt-6 pb-6 flex flex-col items-center justify-center gap-3 min-h-32">
+              <BarChart3 className="h-10 w-10 text-muted-foreground" />
+              <span className="text-xl font-semibold">成績</span>
+              <span className="text-sm text-muted-foreground">打者・投手の通算成績</span>
             </CardContent>
           </Card>
         </Link>

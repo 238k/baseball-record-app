@@ -47,6 +47,7 @@ export type Database = {
           rbi: number
           recorded_by: string | null
           result: string | null
+          runners_after: Json | null
         }
         Insert: {
           batting_order: number
@@ -60,6 +61,7 @@ export type Database = {
           rbi?: number
           recorded_by?: string | null
           result?: string | null
+          runners_after?: Json | null
         }
         Update: {
           batting_order?: number
@@ -73,6 +75,7 @@ export type Database = {
           rbi?: number
           recorded_by?: string | null
           result?: string | null
+          runners_after?: Json | null
         }
         Relationships: [
           {

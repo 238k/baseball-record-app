@@ -53,6 +53,7 @@ interface AtBatRow {
   lineup_id: string;
   result: string | null;
   rbi: number;
+  runners_after: { base: string; lineup_id: string }[] | null;
 }
 
 interface RunnerEventRow {
@@ -136,7 +137,7 @@ export function useGameState(gameId: string) {
       // Fetch all at_bats for this game
       const { data: atBats } = await supabase
         .from("at_bats")
-        .select("id, inning, inning_half, batting_order, lineup_id, result, rbi")
+        .select("id, inning, inning_half, batting_order, lineup_id, result, rbi, runners_after")
         .eq("game_id", gameId)
         .order("created_at", { ascending: true });
 
@@ -222,12 +223,24 @@ export function useGameState(gameId: string) {
             currentHalf = "top";
           }
         } else {
-          // Use next at-bat's snapshot if available (accurate), else infer
+          // Use next at-bat's snapshot if available (accurate)
           const nextAb = completedAtBats[i + 1];
-          const nextSnapshot = nextAb
-            ? allBaseRunners.filter((br) => br.at_bat_id === nextAb.id)
-            : null;
-          runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, nextSnapshot);
+          if (nextAb) {
+            const nextSnapshot = allBaseRunners.filter((br) => br.at_bat_id === nextAb.id);
+            runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, nextSnapshot);
+          } else if (ab.runners_after) {
+            // Last at-bat: use stored runners_after (user-selected positions)
+            runners = { first: null, second: null, third: null };
+            for (const ra of ab.runners_after) {
+              const player = findLineup(ra.lineup_id);
+              if (ra.base === "1st") runners.first = player;
+              else if (ra.base === "2nd") runners.second = player;
+              else if (ra.base === "3rd") runners.third = player;
+            }
+          } else {
+            // Fallback: infer from result code (for old at-bats without runners_after)
+            runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, null);
+          }
         }
       }
 

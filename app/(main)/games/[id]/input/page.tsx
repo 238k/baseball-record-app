@@ -356,7 +356,7 @@ export default function GameInputPage() {
     if (gameState.baseRunners.third)
       baseRunnersBefore.push({ base: "3rd", lineupId: gameState.baseRunners.third.id });
 
-    // Build runner events (only scored/out — base advancements are captured by next at-bat's snapshot)
+    // Build runner events (scored/out for runner_events table)
     const destinations: { lineupId: string; event: "scored" | "out"; toBase: undefined }[] = [];
     for (const r of runnerRows) {
       if (r.destination === "scored" || r.destination === "out") {
@@ -367,8 +367,19 @@ export default function GameInputPage() {
       destinations.push({ lineupId: currentBatter.id, event: batterDest, toBase: undefined });
     }
 
-    // Determine the result code — we stored it before opening runner dialog
-    // We need to track it, let's use a ref-like approach
+    // Build runners_after: who is on which base after this at-bat
+    const runnersAfter: { base: string; lineupId: string }[] = [];
+    for (const r of runnerRows) {
+      if (r.destination === "stay") {
+        runnersAfter.push({ base: r.fromBase, lineupId: r.lineupId });
+      } else if (["1st", "2nd", "3rd"].includes(r.destination)) {
+        runnersAfter.push({ base: r.destination, lineupId: r.lineupId });
+      }
+    }
+    if (["1st", "2nd", "3rd"].includes(batterDest)) {
+      runnersAfter.push({ base: batterDest, lineupId: currentBatter.id });
+    }
+
     const resultCode = lastResultCode.current;
 
     const result = await recordAtBatAction({
@@ -383,6 +394,7 @@ export default function GameInputPage() {
       pitches: pitchLog,
       baseRunnersBefore,
       runnerDestinations: destinations,
+      runnersAfter,
     });
 
     setSaving(false);

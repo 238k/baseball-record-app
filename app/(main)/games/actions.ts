@@ -236,6 +236,8 @@ interface RecordAtBatInput {
   baseRunnersBefore: { base: string; lineupId: string }[];
   // What happened to each runner + batter
   runnerDestinations: RunnerDestination[];
+  // Runners on base after this at-bat (for accurate state reconstruction)
+  runnersAfter?: { base: string; lineupId: string }[];
 }
 
 export async function recordAtBatAction(input: RecordAtBatInput) {
@@ -259,6 +261,7 @@ export async function recordAtBatAction(input: RecordAtBatInput) {
       rbi: input.rbi,
       pitch_count: input.pitchCount,
       recorded_by: user.id,
+      runners_after: input.runnersAfter ?? null,
     })
     .select("id")
     .single();

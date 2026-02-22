@@ -425,6 +425,63 @@ export async function changePitcherAction(input: {
   return { ok: true };
 }
 
+// ---- Steal recording ----
+
+export async function recordStealAction(input: {
+  gameId: string;
+  lineupId: string;
+  eventType: "stolen_base" | "caught_stealing";
+  fromBase: "1st" | "2nd" | "3rd";
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Find the most recent at-bat for this game (runner_events.at_bat_id is NOT NULL)
+  const { data: lastAtBat } = await supabase
+    .from("at_bats")
+    .select("id")
+    .eq("game_id", input.gameId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!lastAtBat) {
+    return { error: "打席が記録されていないため盗塁を記録できません" };
+  }
+
+  // Insert stolen_base or caught_stealing event
+  const { error: reError } = await supabase.from("runner_events").insert({
+    at_bat_id: lastAtBat.id,
+    lineup_id: input.lineupId,
+    event_type: input.eventType,
+  });
+
+  if (reError) {
+    console.error("recordSteal error:", reError);
+    return { error: "盗塁の記録に失敗しました" };
+  }
+
+  // Home steal success: also record a scored event
+  if (input.eventType === "stolen_base" && input.fromBase === "3rd") {
+    const { error: scoredError } = await supabase.from("runner_events").insert({
+      at_bat_id: lastAtBat.id,
+      lineup_id: input.lineupId,
+      event_type: "scored",
+    });
+
+    if (scoredError) {
+      console.error("home steal scored error:", scoredError);
+    }
+  }
+
+  revalidatePath(`/games/${input.gameId}`);
+  return { ok: true };
+}
+
 export async function finishGameAction(gameId: string) {
   const supabase = await createClient();
   const {

@@ -70,8 +70,8 @@ interface BaseRunnerRow {
 // ---- Constants ----
 
 function getOutsForResult(_result: string, runnerEvents: RunnerEventRow[]): number {
-  // Count outs from actual runner_events data (includes batter out events)
-  return runnerEvents.filter((e) => e.event_type === "out").length;
+  // Count outs from actual runner_events data (includes batter out events and caught stealing)
+  return runnerEvents.filter((e) => e.event_type === "out" || e.event_type === "caught_stealing").length;
 }
 
 // ---- Hook ----
@@ -316,7 +316,7 @@ function computeRunnersAfterAtBat(
   const after: BaseRunners = { first: null, second: null, third: null };
 
   const scoredIds = new Set(events.filter((e) => e.event_type === "scored").map((e) => e.lineup_id));
-  const outIds = new Set(events.filter((e) => e.event_type === "out").map((e) => e.lineup_id));
+  const outIds = new Set(events.filter((e) => e.event_type === "out" || e.event_type === "caught_stealing").map((e) => e.lineup_id));
   const removedIds = new Set([...scoredIds, ...outIds]);
 
   const batter = lineups.find((l) => l.id === ab.lineup_id) ?? null;
@@ -389,6 +389,20 @@ function computeRunnersAfterAtBat(
         else if (r.fromBase === "1st" && !after.first) after.first = r.player;
       }
       break;
+  }
+
+  // Apply stolen_base events: advance runners who stole successfully
+  const stolenBaseIds = new Set(events.filter((e) => e.event_type === "stolen_base").map((e) => e.lineup_id));
+  for (const stealId of stolenBaseIds) {
+    // Find which base this runner is on and advance them
+    if (after.first && after.first.id === stealId) {
+      after.second = after.first;
+      after.first = null;
+    } else if (after.second && after.second.id === stealId) {
+      after.third = after.second;
+      after.second = null;
+    }
+    // 3rd → home is handled by scored event (already removed from bases)
   }
 
   return after;

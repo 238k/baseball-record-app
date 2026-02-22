@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameState, type BaseRunners } from "@/hooks/useGameState";
 import { useGameSession } from "@/hooks/useGameSession";
-import { recordAtBatAction, changePitcherAction, finishGameAction } from "@/app/(main)/games/actions";
+import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction } from "@/app/(main)/games/actions";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { RunnerDisplay } from "@/components/game/RunnerDisplay";
@@ -192,6 +192,11 @@ export default function GameInputPage() {
 
   // Finish game dialog
   const [showFinishGame, setShowFinishGame] = useState(false);
+
+  // Steal dialog state
+  const [showStealDialog, setShowStealDialog] = useState(false);
+  const [stealLineupId, setStealLineupId] = useState("");
+  const [stealSaving, setStealSaving] = useState(false);
 
   // Track last result code between confirm and save
   const lastResultCode = useRef("");
@@ -463,6 +468,62 @@ export default function GameInputPage() {
     router.push(`/games/${gameId}`);
   }, [gameId, router]);
 
+  // Check if at least one runner is on base (for steal button)
+  const hasRunners = !!(gameState.baseRunners.first || gameState.baseRunners.second || gameState.baseRunners.third);
+
+  // Build runner options for steal dialog
+  const stealRunnerOptions = useMemo(() => {
+    const options: { lineupId: string; playerName: string; fromBase: "1st" | "2nd" | "3rd" }[] = [];
+    if (gameState.baseRunners.first) {
+      options.push({
+        lineupId: gameState.baseRunners.first.id,
+        playerName: gameState.baseRunners.first.player_name ?? "—",
+        fromBase: "1st",
+      });
+    }
+    if (gameState.baseRunners.second) {
+      options.push({
+        lineupId: gameState.baseRunners.second.id,
+        playerName: gameState.baseRunners.second.player_name ?? "—",
+        fromBase: "2nd",
+      });
+    }
+    if (gameState.baseRunners.third) {
+      options.push({
+        lineupId: gameState.baseRunners.third.id,
+        playerName: gameState.baseRunners.third.player_name ?? "—",
+        fromBase: "3rd",
+      });
+    }
+    return options;
+  }, [gameState.baseRunners]);
+
+  const handleSteal = useCallback(async (eventType: "stolen_base" | "caught_stealing") => {
+    const runner = stealRunnerOptions.find((r) => r.lineupId === stealLineupId);
+    if (!runner) return;
+
+    setStealSaving(true);
+    setActionError(null);
+
+    const result = await recordStealAction({
+      gameId,
+      lineupId: runner.lineupId,
+      eventType,
+      fromBase: runner.fromBase,
+    });
+
+    setStealSaving(false);
+
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+
+    setShowStealDialog(false);
+    setStealLineupId("");
+    await gameState.reload();
+  }, [stealLineupId, stealRunnerOptions, gameId, gameState]);
+
   // ---- Loading / error states ----
 
   if (gameState.loading) {
@@ -632,6 +693,19 @@ export default function GameInputPage() {
 
       {/* Action buttons */}
       <div className="flex gap-3">
+        <Button
+          variant="outline"
+          size="lg"
+          className="flex-1 min-h-16 text-base"
+          disabled={!hasRunners}
+          onClick={() => {
+            setShowStealDialog(true);
+            setStealLineupId("");
+            setActionError(null);
+          }}
+        >
+          盗塁
+        </Button>
         <Button
           variant="outline"
           size="lg"
@@ -859,6 +933,53 @@ export default function GameInputPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ---- Steal dialog ---- */}
+      <Dialog open={showStealDialog} onOpenChange={setShowStealDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>盗塁</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">走者を選択</label>
+              <Select value={stealLineupId} onValueChange={setStealLineupId}>
+                <SelectTrigger className="h-12 text-base">
+                  <SelectValue placeholder="走者を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stealRunnerOptions.map((r) => (
+                    <SelectItem key={r.lineupId} value={r.lineupId} className="text-base">
+                      {r.fromBase === "1st" ? "1塁" : r.fromBase === "2nd" ? "2塁" : "3塁"}: {r.playerName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                size="lg"
+                className="flex-1 min-h-16 text-lg"
+                disabled={!stealLineupId || stealSaving}
+                onClick={() => handleSteal("stolen_base")}
+              >
+                {stealSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                成功
+              </Button>
+              <Button
+                size="lg"
+                variant="destructive"
+                className="flex-1 min-h-16 text-lg"
+                disabled={!stealLineupId || stealSaving}
+                onClick={() => handleSteal("caught_stealing")}
+              >
+                {stealSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                失敗
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, saveLineupAction, startGameAction } from './actions'
+import { createGameAction, saveLineupAction, startGameAction, recordStealAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -424,5 +424,143 @@ describe('getPitchingStatsDelta', () => {
     expect(result).toEqual({
       outs: 1, hits: 0, runs: 1, earnedRuns: 1, walks: 0, strikeouts: 0,
     })
+  })
+})
+
+// ─── recordStealAction ──────────────────────────────────────────────────────
+
+describe('recordStealAction', () => {
+  function makeStealMockSupabase({
+    user = { id: 'user-1' } as { id: string } | null,
+    lastAtBat = { id: 'ab-1' } as { id: string } | null,
+    lastAtBatError = null as unknown,
+    insertResult = { error: null } as { error: unknown },
+  } = {}) {
+    const singleFn = vi.fn().mockResolvedValue({
+      data: lastAtBat,
+      error: lastAtBatError,
+    })
+    const limitFn = vi.fn().mockReturnValue({ single: singleFn })
+    const orderFn = vi.fn().mockReturnValue({ limit: limitFn })
+    const selectEqFn = vi.fn().mockReturnValue({ order: orderFn })
+    const selectFn = vi.fn().mockReturnValue({ eq: selectEqFn })
+
+    const insertFn = vi.fn().mockResolvedValue(insertResult)
+
+    const from = vi.fn((table: string) => {
+      if (table === 'at_bats') {
+        return { select: selectFn }
+      }
+      if (table === 'runner_events') {
+        return { insert: insertFn }
+      }
+      return {}
+    })
+
+    return {
+      mock: {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({ data: { user } }),
+        },
+        from,
+      },
+      insertFn,
+    }
+  }
+
+  const baseInput = {
+    gameId: 'game-1',
+    lineupId: 'lineup-1',
+    eventType: 'stolen_base' as const,
+    fromBase: '1st' as const,
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    const { mock } = makeStealMockSupabase({ user: null })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction(baseInput)
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('打席がない場合エラーを返す', async () => {
+    const { mock } = makeStealMockSupabase({ lastAtBat: null, lastAtBatError: { message: 'not found' } })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction(baseInput)
+    expect(result).toEqual({ error: '打席が記録されていないため盗塁を記録できません' })
+  })
+
+  it('盗塁成功: runner_events に stolen_base を INSERT', async () => {
+    const { mock, insertFn } = makeStealMockSupabase()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction(baseInput)
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-1',
+      event_type: 'stolen_base',
+    })
+  })
+
+  it('盗塁死: runner_events に caught_stealing を INSERT', async () => {
+    const { mock, insertFn } = makeStealMockSupabase()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction({
+      ...baseInput,
+      eventType: 'caught_stealing',
+    })
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-1',
+      event_type: 'caught_stealing',
+    })
+  })
+
+  it('ホームスチール成功: stolen_base + scored の2件を INSERT', async () => {
+    const { mock, insertFn } = makeStealMockSupabase()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction({
+      ...baseInput,
+      fromBase: '3rd',
+      eventType: 'stolen_base',
+    })
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledTimes(2)
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-1',
+      event_type: 'stolen_base',
+    })
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-1',
+      event_type: 'scored',
+    })
+  })
+
+  it('盗塁死（3塁）: caught_stealing のみ INSERT（scored は INSERT しない）', async () => {
+    const { mock, insertFn } = makeStealMockSupabase()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction({
+      ...baseInput,
+      fromBase: '3rd',
+      eventType: 'caught_stealing',
+    })
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledTimes(1)
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-1',
+      event_type: 'caught_stealing',
+    })
+  })
+
+  it('runner_events INSERT エラーの場合エラーを返す', async () => {
+    const { mock } = makeStealMockSupabase({
+      insertResult: { error: { message: 'insert error' } },
+    })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordStealAction(baseInput)
+    expect(result).toEqual({ error: '盗塁の記録に失敗しました' })
   })
 })

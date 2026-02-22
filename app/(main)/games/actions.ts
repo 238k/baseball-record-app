@@ -261,7 +261,7 @@ export async function recordAtBatAction(input: RecordAtBatInput) {
       rbi: input.rbi,
       pitch_count: input.pitchCount,
       recorded_by: user.id,
-      runners_after: input.runnersAfter ?? null,
+      runners_after: input.runnersAfter?.map((r) => ({ base: r.base, lineup_id: r.lineupId })) ?? null,
     })
     .select("id")
     .single();

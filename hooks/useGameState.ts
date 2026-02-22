@@ -237,6 +237,8 @@ export function useGameState(gameId: string) {
               else if (ra.base === "2nd") runners.second = player;
               else if (ra.base === "3rd") runners.third = player;
             }
+            // Apply steal events that occurred after the at-bat result
+            applyStealEvents(runners, events);
           } else {
             // Fallback: infer from result code (for old at-bats without runners_after)
             runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, null);
@@ -299,6 +301,39 @@ export function useGameState(gameId: string) {
 }
 
 // ---- Helpers ----
+
+/**
+ * Apply stolen_base / caught_stealing events on top of current runner positions.
+ * These events are recorded between at-bats but attached to the previous at-bat.
+ */
+function applyStealEvents(runners: BaseRunners, events: RunnerEventRow[]): void {
+  // Remove caught-stealing runners
+  const caughtIds = new Set(events.filter((e) => e.event_type === "caught_stealing").map((e) => e.lineup_id));
+  for (const csId of caughtIds) {
+    if (runners.first?.id === csId) runners.first = null;
+    if (runners.second?.id === csId) runners.second = null;
+    if (runners.third?.id === csId) runners.third = null;
+  }
+
+  // Advance stolen-base runners
+  const stolenIds = new Set(events.filter((e) => e.event_type === "stolen_base").map((e) => e.lineup_id));
+  for (const stealId of stolenIds) {
+    if (runners.third?.id === stealId) {
+      // 3rd → home (scored event handles removal)
+      runners.third = null;
+    } else if (runners.second?.id === stealId) {
+      if (!runners.third) {
+        runners.third = runners.second;
+        runners.second = null;
+      }
+    } else if (runners.first?.id === stealId) {
+      if (!runners.second) {
+        runners.second = runners.first;
+        runners.first = null;
+      }
+    }
+  }
+}
 
 /**
  * Compute runners after an at-bat using the NEXT at-bat's base_runners snapshot

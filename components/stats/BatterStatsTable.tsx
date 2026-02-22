@@ -91,6 +91,7 @@ function CareerBatterTable({ data }: { data: BatterCareerStats[] }) {
           <TableHead className="text-right">試合</TableHead>
           <TableHead className="text-right">打席</TableHead>
           <TableHead className="text-right">打数</TableHead>
+          <TableHead className="text-right">安打</TableHead>
           <TableHead className="text-right">打率</TableHead>
           <TableHead className="text-right">出塁率</TableHead>
           <TableHead className="text-right">長打率</TableHead>
@@ -115,6 +116,7 @@ function CareerBatterTable({ data }: { data: BatterCareerStats[] }) {
               <TableCell className="text-right">{row.games ?? 0}</TableCell>
               <TableCell className="text-right">{row.plate_appearances ?? 0}</TableCell>
               <TableCell className="text-right">{atBats}</TableCell>
+              <TableCell className="text-right">{hits}</TableCell>
               <TableCell className="text-right font-mono">
                 {formatAvg(hits, atBats)}
               </TableCell>

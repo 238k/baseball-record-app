@@ -42,6 +42,56 @@ interface RecentAtBatLogProps {
   liveAtBat?: LiveAtBat | null;
 }
 
+interface InningEntry {
+  type: "live";
+  liveAtBat: LiveAtBat;
+}
+
+interface AtBatEntry {
+  type: "atbat";
+  atBat: RecentAtBat;
+}
+
+type Entry = InningEntry | AtBatEntry;
+
+interface InningGroup {
+  key: string;
+  label: string;
+  entries: Entry[];
+}
+
+function groupByInning(
+  recentAtBats: RecentAtBat[],
+  liveAtBat?: LiveAtBat | null
+): InningGroup[] {
+  const groups: InningGroup[] = [];
+  const groupMap = new Map<string, InningGroup>();
+
+  // Live at-bat first
+  if (liveAtBat) {
+    const key = `${liveAtBat.inning}-${liveAtBat.inning_half}`;
+    const label = `${liveAtBat.inning}回${liveAtBat.inning_half === "top" ? "表" : "裏"}`;
+    const group: InningGroup = { key, label, entries: [{ type: "live", liveAtBat }] };
+    groups.push(group);
+    groupMap.set(key, group);
+  }
+
+  for (const ab of recentAtBats) {
+    const key = `${ab.inning}-${ab.inning_half}`;
+    const existing = groupMap.get(key);
+    if (existing) {
+      existing.entries.push({ type: "atbat", atBat: ab });
+    } else {
+      const label = `${ab.inning}回${ab.inning_half === "top" ? "表" : "裏"}`;
+      const group: InningGroup = { key, label, entries: [{ type: "atbat", atBat: ab }] };
+      groups.push(group);
+      groupMap.set(key, group);
+    }
+  }
+
+  return groups;
+}
+
 export function RecentAtBatLog({ recentAtBats, liveAtBat }: RecentAtBatLogProps) {
   if (!liveAtBat && recentAtBats.length === 0) {
     return (
@@ -51,64 +101,70 @@ export function RecentAtBatLog({ recentAtBats, liveAtBat }: RecentAtBatLogProps)
     );
   }
 
-  return (
-    <div className="space-y-2">
-      {liveAtBat && (
-        <div className="py-1.5 border-b space-y-1">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs min-w-12">
-                {liveAtBat.inning}回{liveAtBat.inning_half === "top" ? "表" : "裏"}
-              </span>
-              <span className="font-medium">{liveAtBat.playerName}</span>
-            </div>
-            <span className="text-muted-foreground text-xs">打席中</span>
-          </div>
-          {liveAtBat.pitches.length > 0 && (
-            <div className="text-xs text-muted-foreground pl-14">
-              {liveAtBat.pitches.map((p, i) => (
-                <div key={i}>
-                  {i + 1}球目: {PITCH_LABELS[p] ?? p}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {recentAtBats.map((ab) => {
-        const halfLabel = ab.inning_half === "top" ? "表" : "裏";
-        const resultLabel = RESULT_LABELS[ab.result] ?? ab.result;
-        const rbiText = ab.rbi > 0 ? `（${ab.rbi}打点）` : "";
+  const groups = groupByInning(recentAtBats, liveAtBat);
 
-        return (
-          <div
-            key={ab.id}
-            className="py-1.5 border-b last:border-b-0 space-y-1"
-          >
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs min-w-12">
-                  {ab.inning}回{halfLabel}
-                </span>
-                <span className="font-medium">{ab.playerName}</span>
-              </div>
-              <span>
-                {resultLabel}
-                {rbiText}
-              </span>
-            </div>
-            {ab.pitches.length > 0 && (
-              <div className="text-xs text-muted-foreground pl-14">
-                {ab.pitches.map((p, i) => (
-                  <div key={i}>
-                    {i + 1}球目: {PITCH_LABELS[p] ?? p}
+  return (
+    <div className="divide-y">
+      {groups.map((group) => (
+        <div key={group.key} className="py-2">
+          <div className="text-xs text-muted-foreground mb-1">{group.label}</div>
+          <div className="space-y-1 pl-2">
+            {group.entries.map((entry) => {
+              if (entry.type === "live") {
+                const { liveAtBat: live } = entry;
+                return (
+                  <div key="live" className="space-y-0.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{live.playerName}</span>
+                      <span className="text-muted-foreground text-xs">打席中</span>
+                    </div>
+                    {live.pitches.length > 0 && (
+                      <div className="text-xs text-muted-foreground pl-2">
+                        {[...live.pitches].reverse().map((p, ri) => {
+                          const ballNum = live.pitches.length - ri;
+                          return (
+                            <div key={ri}>
+                              {ballNum}球目: {PITCH_LABELS[p] ?? p}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              }
+
+              const { atBat: ab } = entry;
+              const resultLabel = RESULT_LABELS[ab.result] ?? ab.result;
+              const rbiText = ab.rbi > 0 ? `（${ab.rbi}打点）` : "";
+
+              return (
+                <div key={ab.id} className="space-y-0.5">
+                  <div className="text-sm font-medium">{ab.playerName}</div>
+                  <div className="text-xs pl-2">
+                    <span className="font-medium">
+                      打席結果: {resultLabel}
+                      {rbiText}
+                    </span>
+                  </div>
+                  {ab.pitches.length > 0 && (
+                    <div className="text-xs text-muted-foreground pl-2">
+                      {[...ab.pitches].reverse().map((p, ri) => {
+                        const ballNum = ab.pitches.length - ri;
+                        return (
+                          <div key={ri}>
+                            {ballNum}球目: {PITCH_LABELS[p] ?? p}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }

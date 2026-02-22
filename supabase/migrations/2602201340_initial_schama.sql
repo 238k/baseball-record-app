@@ -17,14 +17,14 @@ create table profiles (
 create or replace function handle_new_user()
 returns trigger as $$
 begin
-  insert into profiles (id, display_name)
+  insert into public.profiles (id, display_name)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', new.email)
   );
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_auth_user_created
   after insert on auth.users

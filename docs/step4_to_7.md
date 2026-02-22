@@ -304,18 +304,22 @@ SupabaseにVIEW（v_batter_game_stats, v_batter_career_stats, v_pitcher_game_sta
 
 ---
 
-## 追加するファイル
+## 追加・変更するファイル
 
 ```
 app/(main)/
 ├── games/[id]/
-│   └── page.tsx              # 試合成績タブを追加
+│   └── page.tsx              # 試合成績タブを追加（変更）
 └── team/[id]/
-    └── stats/page.tsx        # チーム通算成績
+    ├── page.tsx              # 「成績」カードリンクを追加（変更）
+    └── stats/page.tsx        # チーム通算成績（新規）
 components/
 └── stats/
-    ├── BatterStatsTable.tsx  # 打者成績テーブル
-    └── PitcherStatsTable.tsx # 投手成績テーブル
+    ├── formatStats.ts        # 打率・出塁率等の計算ユーティリティ（新規）
+    ├── formatStats.test.ts   # formatStats のテスト（新規）
+    ├── BatterStatsTable.tsx  # 打者成績テーブル（新規）
+    ├── PitcherStatsTable.tsx # 投手成績テーブル（新規）
+    └── GameStatsTabs.tsx     # 試合成績タブ切替（クライアントコンポーネント・新規）
 ```
 
 ---
@@ -349,34 +353,36 @@ const { data } = await supabase
   .eq('team_id', teamId)
 ```
 
-### 割り算の表示（TypeScript側で実施）
+### 計算ユーティリティ（`components/stats/formatStats.ts`）
 
 ```typescript
-// 打率（3桁表示・0除算考慮）
-const formatAvg = (hits: number, atBats: number) =>
-  atBats === 0 ? '---' : (hits / atBats).toFixed(3).replace(/^0/, '')
+// 打率（3桁表示・0除算考慮、1.000以上にも対応）
+formatAvg(hits, atBats)       // ".333" or "---"
 
 // 出塁率
-const formatObp = (hits: number, walks: number, hbp: number, atBats: number, sacFlies: number) => {
-  const denom = atBats + walks + hbp + sacFlies
-  return denom === 0 ? '---' : ((hits + walks + hbp) / denom).toFixed(3).replace(/^0/, '')
-}
+formatObp(hits, walks, hbp, atBats, sacFlies)  // ".400" or "---"
+
+// 長打率
+formatSlg(totalBases, atBats) // ".500" or "---"
+
+// OPS（出塁率 + 長打率を内部で計算）
+formatOps(hits, walks, hbp, atBats, sacFlies, totalBases)  // ".864" or "---"
 
 // 防御率（9イニング換算・27アウト）
-const formatEra = (earnedRuns: number, outs: number) =>
-  outs === 0 ? '---' : (earnedRuns * 27 / outs).toFixed(2)
+formatEra(earnedRuns, outs)   // "3.00" or "---"
 
 // 投球回（6.1 = 6回1/3）
-const formatIp = (outs: number) =>
-  `${Math.floor(outs / 3)}.${outs % 3}`
+formatIp(outs)                // "6.1"
 ```
 
 ### 試合詳細画面の成績タブ
 
-試合詳細画面にタブを追加：
-- 「試合情報」タブ（既存）
+試合ステータスが `in_progress` または `finished` の場合、`GameStatsTabs`（クライアントコンポーネント）でタブ切替を表示：
+- 「オーダー」タブ（既存のラインナップ表示）
 - 「打者成績」タブ
 - 「投手成績」タブ
+
+サーバーコンポーネント側で全タブのデータを並列取得し、クライアントに渡す。
 
 **打者成績テーブルの列：**
 打順・名前・打席・打数・安打・打率・打点・得点・本塁打・盗塁・三振・四球
@@ -386,18 +392,26 @@ const formatIp = (outs: number) =>
 
 ### チーム通算成績 `/team/[id]/stats`
 
-**打者成績テーブル（試合数5以上の選手に絞るなど適宜フィルタ）：**
-名前・試合・打席・打数・打率・出塁率・長打率・OPS・打点・得点・本塁打・盗塁・安打数
+サーバーコンポーネントとして実装。打席数・登板数の降順で全選手を表示する。
 
-**投手成績テーブル：**
+**打者成績テーブルの列：**
+名前・試合・打席・打数・安打・打率・出塁率・長打率・OPS・打点・得点・本塁打・盗塁
+
+**投手成績テーブルの列：**
 名前・登板・投球回・防御率・奪三振・与四球・被安打
+
+### チームページ `/team/[id]` — リンク追加
+
+既存のカードグリッドに「成績」カード（BarChart3 アイコン）を追加し、`/team/[id]/stats` へ遷移。
 
 ---
 
 ## 完了条件
 
-- [ ] 試合詳細で打者成績テーブルが表示される
+- [ ] 試合詳細で打者成績テーブルが表示される（`in_progress` / `finished` 時のみ）
 - [ ] 試合詳細で投手成績テーブルが表示される
-- [ ] 打率・出塁率・防御率が正しく計算・表示される
+- [ ] 打率・出塁率・長打率・OPS・防御率が正しく計算・表示される
 - [ ] 0打数の場合は「---」と表示される
 - [ ] チーム通算成績ページで全選手の成績が確認できる
+- [ ] チームページから成績ページへのリンクが機能する
+- [ ] `pnpm lint && pnpm build && pnpm test` がパスする

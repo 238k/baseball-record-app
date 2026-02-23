@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction } from './actions'
+import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, deleteGameAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -720,5 +720,137 @@ describe('changePositionAction', () => {
       changes: [{ lineupId: 'l-1', newPosition: '一' }],
     })
     expect(result).toEqual({ error: '守備変更に失敗しました' })
+  })
+})
+
+// ─── updateGameAction ─────────────────────────────────────────────────────────
+
+describe('updateGameAction', () => {
+  const baseInput = {
+    gameId: 'game-1',
+    opponentName: '新しい相手',
+    gameDate: '2026-03-01',
+    location: '新球場',
+    isHome: false,
+    innings: 7,
+    useDh: true,
+  }
+
+  function makeUpdateGameMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    selectResult = { data: { status: 'scheduled' }, error: null } as { data: unknown; error: unknown },
+    updateResult = { error: null } as { error: unknown },
+  } = {}) {
+    const selectSingle = vi.fn().mockResolvedValue(selectResult)
+    const selectEq = vi.fn().mockReturnValue({ single: selectSingle })
+    const selectFn = vi.fn().mockReturnValue({ eq: selectEq })
+
+    const updateEqFn = vi.fn().mockResolvedValue(updateResult)
+    const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
+
+    const from = vi.fn(() => ({
+      select: selectFn,
+      update: updateFn,
+    }))
+
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeUpdateGameMock({ user: null }))
+    const result = await updateGameAction(baseInput)
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('相手チーム名が空白の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeUpdateGameMock())
+    const result = await updateGameAction({ ...baseInput, opponentName: '  ' })
+    expect(result).toEqual({ error: '相手チーム名を入力してください' })
+  })
+
+  it('試合日が空の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeUpdateGameMock())
+    const result = await updateGameAction({ ...baseInput, gameDate: '' })
+    expect(result).toEqual({ error: '試合日を入力してください' })
+  })
+
+  it('scheduled 以外の試合はエラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeUpdateGameMock({ selectResult: { data: { status: 'in_progress' }, error: null } })
+    )
+    const result = await updateGameAction(baseInput)
+    expect(result).toEqual({ error: '試合前の試合のみ編集できます' })
+  })
+
+  it('正常に更新できた場合 ok: true を返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeUpdateGameMock())
+    const result = await updateGameAction(baseInput)
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('UPDATE エラーの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeUpdateGameMock({ updateResult: { error: { message: 'update error' } } })
+    )
+    const result = await updateGameAction(baseInput)
+    expect(result).toEqual({ error: '試合の更新に失敗しました' })
+  })
+})
+
+// ─── deleteGameAction ─────────────────────────────────────────────────────────
+
+describe('deleteGameAction', () => {
+  function makeDeleteGameMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    selectResult = { data: { status: 'scheduled' }, error: null } as { data: unknown; error: unknown },
+    deleteResult = { error: null } as { error: unknown },
+  } = {}) {
+    const selectSingle = vi.fn().mockResolvedValue(selectResult)
+    const selectEq = vi.fn().mockReturnValue({ single: selectSingle })
+    const selectFn = vi.fn().mockReturnValue({ eq: selectEq })
+
+    const deleteEqFn = vi.fn().mockResolvedValue(deleteResult)
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
+
+    const from = vi.fn(() => ({
+      select: selectFn,
+      delete: deleteFn,
+    }))
+
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeDeleteGameMock({ user: null }))
+    const result = await deleteGameAction('game-1')
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('scheduled 以外の試合はエラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeDeleteGameMock({ selectResult: { data: { status: 'finished' }, error: null } })
+    )
+    const result = await deleteGameAction('game-1')
+    expect(result).toEqual({ error: '試合前の試合のみ削除できます' })
+  })
+
+  it('正常に削除できた場合 ok: true を返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeDeleteGameMock())
+    const result = await deleteGameAction('game-1')
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('DELETE エラーの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeDeleteGameMock({ deleteResult: { error: { message: 'delete error' } } })
+    )
+    const result = await deleteGameAction('game-1')
+    expect(result).toEqual({ error: '試合の削除に失敗しました' })
   })
 })

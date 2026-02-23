@@ -639,6 +639,90 @@ export async function finishGameAction(gameId: string) {
   return { ok: true };
 }
 
+export async function updateGameAction(input: {
+  gameId: string;
+  opponentName: string;
+  gameDate: string;
+  location: string;
+  isHome: boolean;
+  innings: number;
+  useDh: boolean;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  const opponentName = input.opponentName.trim();
+  if (!opponentName) return { error: "相手チーム名を入力してください" };
+  if (!input.gameDate) return { error: "試合日を入力してください" };
+
+  // Only scheduled games can be edited
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game) return { error: "試合が見つかりません" };
+  if (game.status !== "scheduled") return { error: "試合前の試合のみ編集できます" };
+
+  const { error } = await supabase
+    .from("games")
+    .update({
+      opponent_name: opponentName,
+      game_date: input.gameDate,
+      location: input.location.trim() || null,
+      is_home: input.isHome,
+      innings: input.innings,
+      use_dh: input.useDh,
+    })
+    .eq("id", input.gameId);
+
+  if (error) {
+    console.error("updateGame error:", error);
+    return { error: "試合の更新に失敗しました" };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/games/${input.gameId}`);
+  return { ok: true };
+}
+
+export async function deleteGameAction(gameId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Only scheduled games can be deleted
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", gameId)
+    .single();
+
+  if (!game) return { error: "試合が見つかりません" };
+  if (game.status !== "scheduled") return { error: "試合前の試合のみ削除できます" };
+
+  const { error } = await supabase
+    .from("games")
+    .delete()
+    .eq("id", gameId);
+
+  if (error) {
+    console.error("deleteGame error:", error);
+    return { error: "試合の削除に失敗しました" };
+  }
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function startGameAction(gameId: string) {
   const supabase = await createClient();
   const {

@@ -485,6 +485,110 @@ export async function recordStealAction(input: {
   return { ok: true };
 }
 
+// ---- Player substitution ----
+
+export async function substitutePlayerAction(input: {
+  gameId: string;
+  battingOrder: number;
+  teamSide: "home" | "visitor";
+  newPlayerId: string | null;
+  newPlayerName: string;
+  newPosition: string;
+  currentInning: number;
+  type: "pinch_hitter" | "pinch_runner";
+  replacedLineupId?: string; // for pinch runner: the lineup_id being replaced on base
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  if (!input.newPlayerName.trim()) {
+    return { error: "交代選手の名前を入力してください" };
+  }
+
+  // Insert new lineup entry
+  const { data: newLineup, error: insertError } = await supabase
+    .from("lineups")
+    .insert({
+      game_id: input.gameId,
+      team_side: input.teamSide,
+      batting_order: input.battingOrder,
+      player_id: input.newPlayerId,
+      player_name: input.newPlayerName.trim(),
+      position: input.newPosition,
+      inning_from: input.currentInning,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !newLineup) {
+    console.error("substitutePlayer error:", insertError);
+    return { error: "選手交代に失敗しました" };
+  }
+
+  // For pinch runner: update runners_after on the latest at-bat to reference new lineup
+  if (input.type === "pinch_runner" && input.replacedLineupId) {
+    const { data: lastAtBat } = await supabase
+      .from("at_bats")
+      .select("id, runners_after")
+      .eq("game_id", input.gameId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (lastAtBat?.runners_after) {
+      const updated = (lastAtBat.runners_after as { base: string; lineup_id: string }[]).map(
+        (ra) => ra.lineup_id === input.replacedLineupId
+          ? { ...ra, lineup_id: newLineup.id }
+          : ra
+      );
+      await supabase
+        .from("at_bats")
+        .update({ runners_after: updated })
+        .eq("id", lastAtBat.id);
+    }
+  }
+
+  revalidatePath(`/games/${input.gameId}`);
+  return { ok: true };
+}
+
+// ---- Position change ----
+
+export async function changePositionAction(input: {
+  gameId: string;
+  changes: { lineupId: string; newPosition: string }[];
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  if (input.changes.length === 0) {
+    return { error: "変更する守備位置を選択してください" };
+  }
+
+  for (const change of input.changes) {
+    const { error } = await supabase
+      .from("lineups")
+      .update({ position: change.newPosition })
+      .eq("id", change.lineupId);
+
+    if (error) {
+      console.error("changePosition error:", error);
+      return { error: "守備変更に失敗しました" };
+    }
+  }
+
+  revalidatePath(`/games/${input.gameId}`);
+  return { ok: true };
+}
+
 export async function finishGameAction(gameId: string) {
   const supabase = await createClient();
   const {

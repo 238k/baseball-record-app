@@ -13,6 +13,7 @@ export interface LineupPlayer {
   player_number: string | null;
   position: string | null;
   team_side: string;
+  inning_from: number;
 }
 
 export interface BaseRunners {
@@ -120,9 +121,11 @@ export function useGameState(gameId: string) {
       // Fetch lineups (batting lineup only, exclude DH pitchers)
       const { data: lineups } = await supabase
         .from("lineups")
-        .select("id, batting_order, player_id, player_name, position, team_side, players(number)")
+        .select("id, batting_order, player_id, player_name, position, team_side, inning_from, players(number)")
         .eq("game_id", gameId)
-        .order("batting_order");
+        .order("batting_order")
+        .order("inning_from")
+        .order("created_at");
 
       const allLineups: LineupPlayer[] = (lineups ?? []).map((l) => ({
         id: l.id,
@@ -132,6 +135,7 @@ export function useGameState(gameId: string) {
         player_number: (l.players as { number: string | null } | null)?.number ?? null,
         position: l.position,
         team_side: l.team_side,
+        inning_from: l.inning_from,
       }));
 
       // Fetch all at_bats for this game

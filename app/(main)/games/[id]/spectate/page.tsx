@@ -11,7 +11,7 @@ import { PitchCountDisplay } from "@/components/game/PitchCountDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Radio, RefreshCw } from "lucide-react";
+import { ArrowLeft, BarChart3, Loader2, Radio, RefreshCw } from "lucide-react";
 
 export default function SpectatePage() {
   const params = useParams();
@@ -168,6 +168,19 @@ export default function SpectatePage() {
           />
         </CardContent>
       </Card>
+
+      {/* Stats link for finished games */}
+      {!isLive && state.game.status === "finished" && (
+        <Button
+          variant="outline"
+          size="lg"
+          className="w-full min-h-14 text-base"
+          onClick={() => router.push(`/games/${gameId}`)}
+        >
+          <BarChart3 className="mr-2 h-5 w-5" />
+          試合成績を見る
+        </Button>
+      )}
 
       {/* Input holder info */}
       {state.inputHolder && (

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
 async function signOut() {
   "use server";
@@ -42,6 +42,11 @@ export default async function MainLayout({
             <span className="text-sm text-muted-foreground hidden sm:block">
               {profile?.display_name}
             </span>
+            <Link href="/settings" prefetch={false}>
+              <Button variant="ghost" size="sm">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
             <form action={signOut}>
               <Button type="submit" variant="ghost" size="sm">
                 <LogOut className="h-4 w-4 mr-1" />

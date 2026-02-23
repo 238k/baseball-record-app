@@ -210,6 +210,11 @@ export default function GameInputPage() {
   // Position change dialog state
   const [showPosChangeDialog, setShowPosChangeDialog] = useState(false);
   const [posChanges, setPosChanges] = useState<Record<string, string>>({}); // lineupId → position
+  const [posSubstitutions, setPosSubstitutions] = useState<Record<string, {
+    newPlayerId: string | null;
+    newPlayerName: string;
+  }>>({}); // lineupId → substitute player info
+  const [posSubManualInput, setPosSubManualInput] = useState<Set<string>>(new Set()); // lineupIds using manual text input
   const [posChangeSaving, setPosChangeSaving] = useState(false);
 
   // Track last result code between confirm and save
@@ -649,14 +654,19 @@ export default function GameInputPage() {
   const handlePositionChange = useCallback(async () => {
     if (!gameState.game) return;
 
-    const changes = Object.entries(posChanges)
+    const subEntries = Object.entries(posSubstitutions).filter(
+      ([, sub]) => sub.newPlayerName.trim()
+    );
+
+    const posOnlyChanges = Object.entries(posChanges)
       .filter(([lineupId, newPos]) => {
+        if (posSubstitutions[lineupId]) return false; // handled as substitution
         const lineup = fieldingLineup.find((l) => l.id === lineupId);
         return lineup && lineup.position !== newPos;
       })
       .map(([lineupId, newPosition]) => ({ lineupId, newPosition }));
 
-    if (changes.length === 0) {
+    if (subEntries.length === 0 && posOnlyChanges.length === 0) {
       setShowPosChangeDialog(false);
       return;
     }
@@ -664,22 +674,49 @@ export default function GameInputPage() {
     setPosChangeSaving(true);
     setActionError(null);
 
-    const result = await changePositionAction({
-      gameId,
-      changes,
-    });
+    // 1. Process substitutions first
+    for (const [lineupId, sub] of subEntries) {
+      const lineup = fieldingLineup.find((l) => l.id === lineupId);
+      if (!lineup) continue;
 
-    setPosChangeSaving(false);
+      const result = await substitutePlayerAction({
+        gameId,
+        battingOrder: lineup.batting_order,
+        teamSide: fieldingTeamSide as "home" | "visitor",
+        newPlayerId: sub.newPlayerId,
+        newPlayerName: sub.newPlayerName.trim(),
+        newPosition: posChanges[lineupId] ?? lineup.position ?? "",
+        currentInning: gameState.currentInning,
+        type: "pinch_hitter",
+      });
 
-    if (result.error) {
-      setActionError(result.error);
-      return;
+      if (result.error) {
+        setPosChangeSaving(false);
+        setActionError(result.error);
+        return;
+      }
     }
 
+    // 2. Process position-only changes
+    if (posOnlyChanges.length > 0) {
+      const result = await changePositionAction({
+        gameId,
+        changes: posOnlyChanges,
+      });
+
+      if (result.error) {
+        setPosChangeSaving(false);
+        setActionError(result.error);
+        return;
+      }
+    }
+
+    setPosChangeSaving(false);
     setShowPosChangeDialog(false);
     setPosChanges({});
+    setPosSubstitutions({});
     await gameState.reload();
-  }, [gameState, gameId, posChanges, fieldingLineup]);
+  }, [gameState, gameId, posChanges, posSubstitutions, fieldingLineup, fieldingTeamSide]);
 
   // ---- Loading / error states ----
 
@@ -890,6 +927,8 @@ export default function GameInputPage() {
               init[l.id] = l.position ?? "";
             }
             setPosChanges(init);
+            setPosSubstitutions({});
+            setPosSubManualInput(new Set());
             setShowPosChangeDialog(true);
             setActionError(null);
           }}
@@ -1319,38 +1358,141 @@ export default function GameInputPage() {
 
       {/* ---- Position change dialog ---- */}
       <Dialog open={showPosChangeDialog} onOpenChange={setShowPosChangeDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>守備変更</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {fieldingLineup.map((l) => (
-              <div key={l.id} className="flex items-center gap-3">
-                <span className="text-sm w-32 truncate">
-                  {l.batting_order}番 {l.player_name}
-                </span>
-                <Select
-                  value={posChanges[l.id] ?? l.position ?? ""}
-                  onValueChange={(val) => setPosChanges((prev) => ({ ...prev, [l.id]: val }))}
-                >
-                  <SelectTrigger className="h-10 text-base flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "DH"].map((pos) => (
-                      <SelectItem key={pos} value={pos} className="text-base">{pos}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
+            {fieldingLineup.map((l) => {
+              const hasSub = !!posSubstitutions[l.id];
+              return (
+                <div key={l.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm w-28 truncate">
+                      {l.batting_order}番 {l.player_name}
+                    </span>
+                    <Select
+                      value={posChanges[l.id] ?? l.position ?? ""}
+                      onValueChange={(val) => setPosChanges((prev) => ({ ...prev, [l.id]: val }))}
+                    >
+                      <SelectTrigger className="h-10 text-base flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "DH"].map((pos) => (
+                          <SelectItem key={pos} value={pos} className="text-base">{pos}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant={hasSub ? "secondary" : "outline"}
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        if (hasSub) {
+                          setPosSubstitutions((prev) => {
+                            const next = { ...prev };
+                            delete next[l.id];
+                            return next;
+                          });
+                        } else {
+                          setPosSubstitutions((prev) => ({
+                            ...prev,
+                            [l.id]: { newPlayerId: null, newPlayerName: "" },
+                          }));
+                        }
+                      }}
+                    >
+                      {hasSub ? "取消" : "交代"}
+                    </Button>
+                  </div>
+                  {hasSub && (
+                    <div className="pl-8 space-y-1">
+                      {fieldingTeamSide === ownTeamSide && availablePlayers.length > 0 && !posSubManualInput.has(l.id) ? (
+                        <>
+                          <Select
+                            value={posSubstitutions[l.id]?.newPlayerId ?? ""}
+                            onValueChange={(val) => {
+                              const player = availablePlayers.find((p) => p.id === val);
+                              if (player) {
+                                setPosSubstitutions((prev) => ({
+                                  ...prev,
+                                  [l.id]: { newPlayerId: player.id, newPlayerName: player.name },
+                                }));
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-10 text-base">
+                              <SelectValue placeholder="交代選手を選択" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availablePlayers.map((p) => (
+                                <SelectItem key={p.id} value={p.id} className="text-base">
+                                  {p.number ? `#${p.number} ` : ""}{p.name}{p.position ? `（${p.position}）` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground underline"
+                            onClick={() => {
+                              setPosSubManualInput((prev) => new Set(prev).add(l.id));
+                              setPosSubstitutions((prev) => ({
+                                ...prev,
+                                [l.id]: { newPlayerId: null, newPlayerName: "" },
+                              }));
+                            }}
+                          >
+                            手入力
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            className="text-base h-10"
+                            placeholder="交代選手名を入力"
+                            value={posSubstitutions[l.id]?.newPlayerName ?? ""}
+                            onChange={(e) => {
+                              setPosSubstitutions((prev) => ({
+                                ...prev,
+                                [l.id]: { ...prev[l.id], newPlayerId: null, newPlayerName: e.target.value },
+                              }));
+                            }}
+                          />
+                          {fieldingTeamSide === ownTeamSide && availablePlayers.length > 0 && (
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-foreground underline"
+                              onClick={() => {
+                                setPosSubManualInput((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(l.id);
+                                  return next;
+                                });
+                                setPosSubstitutions((prev) => ({
+                                  ...prev,
+                                  [l.id]: { newPlayerId: null, newPlayerName: "" },
+                                }));
+                              }}
+                            >
+                              一覧から選択
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPosChangeDialog(false)}>
               キャンセル
             </Button>
             <Button
-              disabled={posChangeSaving}
+              disabled={posChangeSaving || Object.values(posSubstitutions).some((s) => !s.newPlayerName.trim())}
               onClick={handlePositionChange}
             >
               {posChangeSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameState, type BaseRunners } from "@/hooks/useGameState";
 import { useGameSession } from "@/hooks/useGameSession";
-import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction } from "@/app/(main)/games/actions";
+import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction } from "@/app/(main)/games/actions";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { RunnerDisplay } from "@/components/game/RunnerDisplay";
@@ -198,6 +198,20 @@ export default function GameInputPage() {
   const [stealLineupId, setStealLineupId] = useState("");
   const [stealSaving, setStealSaving] = useState(false);
 
+  // Substitution dialog state
+  const [showSubDialog, setShowSubDialog] = useState(false);
+  const [subType, setSubType] = useState<"pinch_hitter" | "pinch_runner">("pinch_hitter");
+  const [subTargetLineupId, setSubTargetLineupId] = useState(""); // runner lineup_id for pinch runner
+  const [subNewPlayerId, setSubNewPlayerId] = useState<string | null>(null);
+  const [subNewPlayerName, setSubNewPlayerName] = useState("");
+  const [subNewPosition, setSubNewPosition] = useState("");
+  const [subSaving, setSubSaving] = useState(false);
+
+  // Position change dialog state
+  const [showPosChangeDialog, setShowPosChangeDialog] = useState(false);
+  const [posChanges, setPosChanges] = useState<Record<string, string>>({}); // lineupId → position
+  const [posChangeSaving, setPosChangeSaving] = useState(false);
+
   // Track last result code between confirm and save
   const lastResultCode = useRef("");
   const [finishing, setFinishing] = useState(false);
@@ -224,11 +238,11 @@ export default function GameInputPage() {
   const battingTeamSide = gameState.currentHalf === "top" ? "visitor" : "home";
   const fieldingTeamSide = gameState.currentHalf === "top" ? "home" : "visitor";
 
-  // Get batting lineup for current side (exclude DH pitchers — position 投 in DH game)
+  // Get batting lineup for current side — latest entry per batting_order (for substitutions)
   const battingLineup = useMemo(() => {
     if (!gameState.game) return [];
     const side = battingTeamSide;
-    const lineups = gameState.lineups.filter((l) => l.team_side === side);
+    let lineups = gameState.lineups.filter((l) => l.team_side === side);
 
     if (gameState.game.use_dh) {
       // In DH games, there may be duplicate batting_orders (DH + pitcher)
@@ -236,21 +250,64 @@ export default function GameInputPage() {
       const dhOrders = new Set(
         lineups.filter((l) => l.position === "DH").map((l) => l.batting_order)
       );
-      return lineups.filter(
+      lineups = lineups.filter(
         (l) => !(l.position === "投" && dhOrders.has(l.batting_order))
       );
     }
-    return lineups;
+
+    // Keep only the latest entry per batting_order (highest inning_from)
+    // Use >= so that later-inserted entries with the same inning_from win
+    const latestByOrder = new Map<number, typeof lineups[number]>();
+    for (const l of lineups) {
+      const existing = latestByOrder.get(l.batting_order);
+      if (!existing || l.inning_from >= existing.inning_from) {
+        latestByOrder.set(l.batting_order, l);
+      }
+    }
+    return Array.from(latestByOrder.values()).sort((a, b) => a.batting_order - b.batting_order);
   }, [gameState.lineups, gameState.game, battingTeamSide]);
 
   const currentBatter = battingLineup.find(
     (l) => l.batting_order === gameState.currentBatterOrder
   );
 
-  // Fielding team lineup (for pitcher change)
+  // Fielding team lineup — latest entry per batting_order
   const fieldingLineup = useMemo(() => {
-    return gameState.lineups.filter((l) => l.team_side === fieldingTeamSide);
+    const lineups = gameState.lineups.filter((l) => l.team_side === fieldingTeamSide);
+    const latestByOrder = new Map<number, typeof lineups[number]>();
+    for (const l of lineups) {
+      const existing = latestByOrder.get(l.batting_order);
+      if (!existing || l.inning_from >= existing.inning_from) {
+        latestByOrder.set(l.batting_order, l);
+      }
+    }
+    return Array.from(latestByOrder.values()).sort((a, b) => a.batting_order - b.batting_order);
   }, [gameState.lineups, fieldingTeamSide]);
+
+  // Determine own team side
+  const ownTeamSide = gameState.game?.is_home ? "home" : "visitor";
+
+  // Available players for substitution (own team, not yet in lineup)
+  const [availablePlayers, setAvailablePlayers] = useState<{ id: string; name: string; number: string | null; position: string | null }[]>([]);
+  useEffect(() => {
+    if (!gameState.game) return;
+    const fetchPlayers = async () => {
+      const supabase = createClient();
+      const { data: players } = await supabase
+        .from("players")
+        .select("id, name, number, position")
+        .eq("team_id", gameState.game!.team_id)
+        .eq("is_active", true)
+        .order("number");
+      if (!players) return;
+      // Exclude players already in lineup (by player_id)
+      const usedPlayerIds = new Set(
+        gameState.lineups.filter((l) => l.player_id).map((l) => l.player_id)
+      );
+      setAvailablePlayers(players.filter((p) => !usedPlayerIds.has(p.id)));
+    };
+    fetchPlayers();
+  }, [gameState.game, gameState.lineups]);
 
   // Compute highlight code from pitch count
   const pitchCounts = useMemo(() => countFromLog(pitchLog), [pitchLog]);
@@ -536,6 +593,94 @@ export default function GameInputPage() {
     await gameState.reload();
   }, [stealLineupId, stealRunnerOptions, gameId, gameState]);
 
+  // ---- Substitution handler ----
+
+  const handleSubstitution = useCallback(async () => {
+    if (!gameState.game || !subNewPlayerName.trim()) return;
+
+    setSubSaving(true);
+    setActionError(null);
+
+    // Determine target batting order and team side
+    let targetBattingOrder: number;
+    let targetTeamSide: "home" | "visitor";
+
+    if (subType === "pinch_hitter") {
+      if (!currentBatter) { setSubSaving(false); return; }
+      targetBattingOrder = currentBatter.batting_order;
+      targetTeamSide = battingTeamSide as "home" | "visitor";
+    } else {
+      // pinch runner: find the runner's batting order
+      const runner = gameState.lineups.find((l) => l.id === subTargetLineupId);
+      if (!runner) { setSubSaving(false); return; }
+      targetBattingOrder = runner.batting_order;
+      targetTeamSide = runner.team_side as "home" | "visitor";
+    }
+
+    const result = await substitutePlayerAction({
+      gameId,
+      battingOrder: targetBattingOrder,
+      teamSide: targetTeamSide,
+      newPlayerId: subNewPlayerId,
+      newPlayerName: subNewPlayerName.trim(),
+      newPosition: subNewPosition || currentBatter?.position || "",
+      currentInning: gameState.currentInning,
+      type: subType,
+      replacedLineupId: subType === "pinch_runner" ? subTargetLineupId : undefined,
+    });
+
+    setSubSaving(false);
+
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+
+    setShowSubDialog(false);
+    setSubNewPlayerId(null);
+    setSubNewPlayerName("");
+    setSubNewPosition("");
+    setSubTargetLineupId("");
+    await gameState.reload();
+  }, [gameState, gameId, subType, subNewPlayerId, subNewPlayerName, subNewPosition, subTargetLineupId, currentBatter, battingTeamSide]);
+
+  // ---- Position change handler ----
+
+  const handlePositionChange = useCallback(async () => {
+    if (!gameState.game) return;
+
+    const changes = Object.entries(posChanges)
+      .filter(([lineupId, newPos]) => {
+        const lineup = fieldingLineup.find((l) => l.id === lineupId);
+        return lineup && lineup.position !== newPos;
+      })
+      .map(([lineupId, newPosition]) => ({ lineupId, newPosition }));
+
+    if (changes.length === 0) {
+      setShowPosChangeDialog(false);
+      return;
+    }
+
+    setPosChangeSaving(true);
+    setActionError(null);
+
+    const result = await changePositionAction({
+      gameId,
+      changes,
+    });
+
+    setPosChangeSaving(false);
+
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+
+    setShowPosChangeDialog(false);
+    setPosChanges({});
+    await gameState.reload();
+  }, [gameState, gameId, posChanges, fieldingLineup]);
+
   // ---- Loading / error states ----
 
   if (gameState.loading) {
@@ -704,11 +849,11 @@ export default function GameInputPage() {
       <AtBatInput onSelect={handleResultSelect} disabled={saving} highlightCode={highlightCode} />
 
       {/* Action buttons */}
-      <div className="flex gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Button
           variant="outline"
           size="lg"
-          className="flex-1 min-h-16 text-base"
+          className="min-h-14 text-base"
           disabled={stealRunnerOptions.length === 0}
           onClick={() => {
             setShowStealDialog(true);
@@ -721,7 +866,40 @@ export default function GameInputPage() {
         <Button
           variant="outline"
           size="lg"
-          className="flex-1 min-h-16 text-base"
+          className="min-h-14 text-base"
+          onClick={() => {
+            setSubType("pinch_hitter");
+            setSubNewPlayerId(null);
+            setSubNewPlayerName("");
+            setSubNewPosition(currentBatter?.position ?? "");
+            setSubTargetLineupId("");
+            setShowSubDialog(true);
+            setActionError(null);
+          }}
+        >
+          交代
+        </Button>
+        <Button
+          variant="outline"
+          size="lg"
+          className="min-h-14 text-base"
+          onClick={() => {
+            // Init position changes with current positions
+            const init: Record<string, string> = {};
+            for (const l of fieldingLineup) {
+              init[l.id] = l.position ?? "";
+            }
+            setPosChanges(init);
+            setShowPosChangeDialog(true);
+            setActionError(null);
+          }}
+        >
+          守備変更
+        </Button>
+        <Button
+          variant="outline"
+          size="lg"
+          className="min-h-14 text-base"
           onClick={() => {
             setShowPitcherChange(true);
             setActionError(null);
@@ -732,7 +910,7 @@ export default function GameInputPage() {
         <Button
           variant="outline"
           size="lg"
-          className="flex-1 min-h-16 text-base"
+          className="min-h-14 text-base col-span-2"
           onClick={() => {
             setShowFinishGame(true);
             setActionError(null);
@@ -990,6 +1168,195 @@ export default function GameInputPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- Substitution dialog ---- */}
+      <Dialog open={showSubDialog} onOpenChange={setShowSubDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>選手交代</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Type toggle */}
+            <div className="flex gap-2">
+              <Button
+                variant={subType === "pinch_hitter" ? "default" : "outline"}
+                size="lg"
+                className="flex-1"
+                onClick={() => {
+                  setSubType("pinch_hitter");
+                  setSubTargetLineupId("");
+                }}
+              >
+                代打
+              </Button>
+              <Button
+                variant={subType === "pinch_runner" ? "default" : "outline"}
+                size="lg"
+                className="flex-1"
+                onClick={() => setSubType("pinch_runner")}
+              >
+                代走
+              </Button>
+            </div>
+
+            {/* Target display */}
+            {subType === "pinch_hitter" && currentBatter && (
+              <div className="text-sm text-muted-foreground">
+                対象: {currentBatter.batting_order}番 {currentBatter.player_name}（{currentBatter.position}）
+              </div>
+            )}
+
+            {/* Pinch runner: select which runner to replace */}
+            {subType === "pinch_runner" && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">走者を選択</label>
+                <Select value={subTargetLineupId} onValueChange={setSubTargetLineupId}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder="走者を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gameState.baseRunners.first && (
+                      <SelectItem value={gameState.baseRunners.first.id} className="text-base">
+                        1塁: {gameState.baseRunners.first.player_name}
+                      </SelectItem>
+                    )}
+                    {gameState.baseRunners.second && (
+                      <SelectItem value={gameState.baseRunners.second.id} className="text-base">
+                        2塁: {gameState.baseRunners.second.player_name}
+                      </SelectItem>
+                    )}
+                    {gameState.baseRunners.third && (
+                      <SelectItem value={gameState.baseRunners.third.id} className="text-base">
+                        3塁: {gameState.baseRunners.third.player_name}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* New player selection */}
+            {(() => {
+              const targetSide = subType === "pinch_hitter"
+                ? battingTeamSide
+                : (gameState.lineups.find((l) => l.id === subTargetLineupId)?.team_side ?? battingTeamSide);
+              const isOwnTeam = targetSide === ownTeamSide;
+
+              return isOwnTeam && availablePlayers.length > 0 ? (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">交代選手</label>
+                  <Select
+                    value={subNewPlayerId ?? ""}
+                    onValueChange={(val) => {
+                      const player = availablePlayers.find((p) => p.id === val);
+                      if (player) {
+                        setSubNewPlayerId(player.id);
+                        setSubNewPlayerName(player.name);
+                        setSubNewPosition(player.position ?? currentBatter?.position ?? "");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-12 text-base">
+                      <SelectValue placeholder="選手を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availablePlayers.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-base">
+                          {p.number ? `#${p.number} ` : ""}{p.name}{p.position ? `（${p.position}）` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">交代選手名</label>
+                  <Input
+                    className="text-lg h-14"
+                    placeholder="選手名を入力"
+                    value={subNewPlayerName}
+                    onChange={(e) => setSubNewPlayerName(e.target.value)}
+                  />
+                </div>
+              );
+            })()}
+
+            {/* Position select */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">守備位置</label>
+              <Select value={subNewPosition} onValueChange={setSubNewPosition}>
+                <SelectTrigger className="h-12 text-base">
+                  <SelectValue placeholder="守備位置" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "DH"].map((pos) => (
+                    <SelectItem key={pos} value={pos} className="text-base">{pos}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSubDialog(false)}>
+              キャンセル
+            </Button>
+            <Button
+              disabled={
+                subSaving ||
+                !subNewPlayerName.trim() ||
+                (subType === "pinch_runner" && !subTargetLineupId)
+              }
+              onClick={handleSubstitution}
+            >
+              {subSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              交代する
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- Position change dialog ---- */}
+      <Dialog open={showPosChangeDialog} onOpenChange={setShowPosChangeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>守備変更</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {fieldingLineup.map((l) => (
+              <div key={l.id} className="flex items-center gap-3">
+                <span className="text-sm w-32 truncate">
+                  {l.batting_order}番 {l.player_name}
+                </span>
+                <Select
+                  value={posChanges[l.id] ?? l.position ?? ""}
+                  onValueChange={(val) => setPosChanges((prev) => ({ ...prev, [l.id]: val }))}
+                >
+                  <SelectTrigger className="h-10 text-base flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "DH"].map((pos) => (
+                      <SelectItem key={pos} value={pos} className="text-base">{pos}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPosChangeDialog(false)}>
+              キャンセル
+            </Button>
+            <Button
+              disabled={posChangeSaving}
+              onClick={handlePositionChange}
+            >
+              {posChangeSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              変更する
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

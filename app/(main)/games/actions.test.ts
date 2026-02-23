@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, saveLineupAction, startGameAction, recordStealAction } from './actions'
+import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -562,5 +562,163 @@ describe('recordStealAction', () => {
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
     const result = await recordStealAction(baseInput)
     expect(result).toEqual({ error: '盗塁の記録に失敗しました' })
+  })
+})
+
+// ─── substitutePlayerAction ──────────────────────────────────────────────────
+
+describe('substitutePlayerAction', () => {
+  const baseInput = {
+    gameId: 'game-1',
+    battingOrder: 3,
+    teamSide: 'home' as const,
+    newPlayerId: 'player-new',
+    newPlayerName: '代打太郎',
+    newPosition: '左',
+    currentInning: 5,
+    type: 'pinch_hitter' as const,
+  }
+
+  function makeSubMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    insertResult = { data: { id: 'new-lineup-1' }, error: null } as { data: unknown; error: unknown },
+  } = {}) {
+    const single = vi.fn().mockResolvedValue(insertResult)
+    const selectFn = vi.fn().mockReturnValue({ single })
+    const insertFn = vi.fn().mockReturnValue({ select: selectFn })
+
+    const from = vi.fn(() => ({
+      insert: insertFn,
+    }))
+
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeSubMock({ user: null }))
+    const result = await substitutePlayerAction(baseInput)
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('選手名が空の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeSubMock())
+    const result = await substitutePlayerAction({ ...baseInput, newPlayerName: '  ' })
+    expect(result).toEqual({ error: '交代選手の名前を入力してください' })
+  })
+
+  it('代打: lineups に新規レコードを INSERT する', async () => {
+    const mock = makeSubMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await substitutePlayerAction(baseInput)
+    expect(result).toEqual({ ok: true })
+    expect(mock.from).toHaveBeenCalledWith('lineups')
+  })
+
+  it('代走: lineups INSERT + runners_after を更新する', async () => {
+    const updateEqFn = vi.fn().mockResolvedValue({ error: null })
+    const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
+
+    const atBatSingle = vi.fn().mockResolvedValue({
+      data: { id: 'ab-1', runners_after: [{ base: '1st', lineup_id: 'old-lineup' }] },
+      error: null,
+    })
+    const atBatLimit = vi.fn().mockReturnValue({ single: atBatSingle })
+    const atBatOrder = vi.fn().mockReturnValue({ limit: atBatLimit })
+    const atBatEq = vi.fn().mockReturnValue({ order: atBatOrder })
+    const atBatSelect = vi.fn().mockReturnValue({ eq: atBatEq })
+
+    const lineupSingle = vi.fn().mockResolvedValue({ data: { id: 'new-lineup-1' }, error: null })
+    const lineupSelectFn = vi.fn().mockReturnValue({ single: lineupSingle })
+    const lineupInsertFn = vi.fn().mockReturnValue({ select: lineupSelectFn })
+
+    const from = vi.fn((table: string) => {
+      if (table === 'lineups') return { insert: lineupInsertFn }
+      if (table === 'at_bats') return { select: atBatSelect, update: updateFn }
+      return {}
+    })
+
+    const mock = {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from,
+    }
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+
+    const result = await substitutePlayerAction({
+      ...baseInput,
+      type: 'pinch_runner',
+      replacedLineupId: 'old-lineup',
+    })
+    expect(result).toEqual({ ok: true })
+    // Verify at_bats update was called
+    expect(updateFn).toHaveBeenCalled()
+  })
+
+  it('INSERT エラーの場合エラーを返す', async () => {
+    const mock = makeSubMock({
+      insertResult: { data: null, error: { message: 'insert error' } },
+    })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await substitutePlayerAction(baseInput)
+    expect(result).toEqual({ error: '選手交代に失敗しました' })
+  })
+})
+
+// ─── changePositionAction ────────────────────────────────────────────────────
+
+describe('changePositionAction', () => {
+  function makePosChangeMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    updateResult = { error: null } as { error: unknown },
+  } = {}) {
+    const updateEqFn = vi.fn().mockResolvedValue(updateResult)
+    const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
+
+    const from = vi.fn(() => ({
+      update: updateFn,
+    }))
+
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makePosChangeMock({ user: null }))
+    const result = await changePositionAction({ gameId: 'game-1', changes: [{ lineupId: 'l-1', newPosition: '一' }] })
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('変更が空の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makePosChangeMock())
+    const result = await changePositionAction({ gameId: 'game-1', changes: [] })
+    expect(result).toEqual({ error: '変更する守備位置を選択してください' })
+  })
+
+  it('守備位置を更新する', async () => {
+    const mock = makePosChangeMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await changePositionAction({
+      gameId: 'game-1',
+      changes: [
+        { lineupId: 'l-1', newPosition: '一' },
+        { lineupId: 'l-2', newPosition: '二' },
+      ],
+    })
+    expect(result).toEqual({ ok: true })
+    expect(mock.from).toHaveBeenCalledWith('lineups')
+  })
+
+  it('UPDATE エラーの場合エラーを返す', async () => {
+    const mock = makePosChangeMock({ updateResult: { error: { message: 'update error' } } })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await changePositionAction({
+      gameId: 'game-1',
+      changes: [{ lineupId: 'l-1', newPosition: '一' }],
+    })
+    expect(result).toEqual({ error: '守備変更に失敗しました' })
   })
 })

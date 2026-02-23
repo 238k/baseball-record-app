@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, deleteGameAction } from './actions'
+import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, deleteGameAction, undoLastAtBatAction, recordRunnerAdvanceAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -25,6 +25,8 @@ function makeMockSupabase({
     error: null,
   } as { data: unknown; error: unknown },
   pitchingInsertResult = { error: null } as { error: unknown },
+  gameSelectResult = { data: { status: 'scheduled' }, error: null } as { data: unknown; error: unknown },
+  lineupCountResult = { count: 2, error: null } as { count: number | null; error: unknown },
 } = {}) {
   const single = vi.fn().mockResolvedValue(insertResult)
   const selectChain = { single }
@@ -49,17 +51,28 @@ function makeMockSupabase({
   const updateEqFn = vi.fn().mockResolvedValue(updateResult)
   const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
 
+  // For game status select
+  const gameSelectSingle = vi.fn().mockResolvedValue(gameSelectResult)
+  const gameSelectEq = vi.fn().mockReturnValue({ single: gameSelectSingle })
+  const gameSelectFn = vi.fn().mockReturnValue({ eq: gameSelectEq })
+
+  // For lineup count (startGameAction)
+  const lineupCountEqFn = vi.fn().mockResolvedValue(lineupCountResult)
+  const lineupCountSelectFn = vi.fn().mockReturnValue({ eq: lineupCountEqFn })
+
   const from = vi.fn((table: string) => {
     if (table === 'games') {
       return {
         insert: vi.fn().mockReturnValue(insertSelectChain),
         update: updateFn,
+        select: gameSelectFn,
       }
     }
     if (table === 'lineups') {
       return {
         insert: vi.fn().mockReturnValue(lineupInsertChain),
         delete: deleteFn,
+        select: lineupCountSelectFn,
       }
     }
     if (table === 'pitching_records') {
@@ -852,5 +865,223 @@ describe('deleteGameAction', () => {
     )
     const result = await deleteGameAction('game-1')
     expect(result).toEqual({ error: '試合の削除に失敗しました' })
+  })
+})
+
+// ─── undoLastAtBatAction ──────────────────────────────────────────────────────
+
+describe('undoLastAtBatAction', () => {
+  function makeUndoMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    gameStatus = 'in_progress',
+    lastAtBat = { id: 'ab-1', inning: 3, inning_half: 'top', batting_order: 4, lineup_id: 'lineup-1', result: '1B' } as {
+      id: string; inning: number; inning_half: string; batting_order: number; lineup_id: string; result: string | null
+    } | null,
+    runnerEvents = [] as { lineup_id: string; event_type: string }[],
+    deleteResult = { error: null } as { error: unknown },
+    pitcherRecords = [{ id: 'pr-1', lineup_id: 'pitcher-1', outs_recorded: 3, hits: 2, runs: 1, earned_runs: 1, walks: 0, strikeouts: 1 }] as unknown[],
+  } = {}) {
+    // game select
+    const gameSingle = vi.fn().mockResolvedValue({ data: { status: gameStatus }, error: null })
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
+    // at_bats select (latest)
+    const abSingle = vi.fn().mockResolvedValue({ data: lastAtBat, error: lastAtBat ? null : { message: 'not found' } })
+    const abLimit = vi.fn().mockReturnValue({ single: abSingle })
+    const abOrder = vi.fn().mockReturnValue({ limit: abLimit })
+    const abEq = vi.fn().mockReturnValue({ order: abOrder })
+    const abSelectFn = vi.fn().mockReturnValue({ eq: abEq })
+
+    // runner_events select
+    const reEq = vi.fn().mockResolvedValue({ data: runnerEvents, error: null })
+    const reSelectFn = vi.fn().mockReturnValue({ eq: reEq })
+
+    // delete
+    const deleteEqFn = vi.fn().mockResolvedValue(deleteResult)
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
+
+    // pitching_records select + update
+    const prIsNull = vi.fn().mockResolvedValue({ data: pitcherRecords, error: null })
+    const prEq = vi.fn().mockReturnValue({ is: prIsNull })
+    const prSelectFn = vi.fn().mockReturnValue({ eq: prEq })
+
+    const prUpdateEq = vi.fn().mockResolvedValue({ error: null })
+    const prUpdateFn = vi.fn().mockReturnValue({ eq: prUpdateEq })
+
+    // lineups select (for fielding team)
+    const luEq2 = vi.fn().mockResolvedValue({ data: [{ id: 'pitcher-1' }], error: null })
+    const luEq = vi.fn().mockReturnValue({ eq: luEq2 })
+    const luSelectFn = vi.fn().mockReturnValue({ eq: luEq })
+
+    const from = vi.fn((table: string) => {
+      if (table === 'games') return { select: gameSelectFn }
+      if (table === 'at_bats') return { select: abSelectFn, delete: deleteFn }
+      if (table === 'runner_events') return { select: reSelectFn }
+      if (table === 'pitching_records') return { select: prSelectFn, update: prUpdateFn }
+      if (table === 'lineups') return { select: luSelectFn }
+      return {}
+    })
+
+    return {
+      mock: {
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+        from,
+      },
+      deleteFn,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    const { mock } = makeUndoMock({ user: null })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await undoLastAtBatAction('game-1')
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('試合が進行中でない場合エラーを返す', async () => {
+    const { mock } = makeUndoMock({ gameStatus: 'scheduled' })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await undoLastAtBatAction('game-1')
+    expect(result).toEqual({ error: '試合が進行中ではありません' })
+  })
+
+  it('打席がない場合エラーを返す', async () => {
+    const { mock } = makeUndoMock({ lastAtBat: null })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await undoLastAtBatAction('game-1')
+    expect(result).toEqual({ error: '取り消す打席がありません' })
+  })
+
+  it('正常に取り消せた場合 ok + undone 情報を返す', async () => {
+    const { mock } = makeUndoMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await undoLastAtBatAction('game-1')
+    expect(result).toEqual({
+      ok: true,
+      undone: { inning: 3, inningHalf: 'top', battingOrder: 4, result: '1B' },
+    })
+  })
+
+  it('DELETE エラーの場合エラーを返す', async () => {
+    const { mock } = makeUndoMock({ deleteResult: { error: { message: 'delete error' } } })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await undoLastAtBatAction('game-1')
+    expect(result).toEqual({ error: '打席の取り消しに失敗しました' })
+  })
+})
+
+// ─── recordRunnerAdvanceAction ────────────────────────────────────────────────
+
+describe('recordRunnerAdvanceAction', () => {
+  function makeAdvanceMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    gameStatus = 'in_progress',
+    lastAtBat = { id: 'ab-1', runners_after: [{ base: '1st', lineup_id: 'lineup-r1' }] } as {
+      id: string; runners_after: unknown
+    } | null,
+    insertResult = { error: null } as { error: unknown },
+    updateResult = { error: null } as { error: unknown },
+  } = {}) {
+    // game select
+    const gameSingle = vi.fn().mockResolvedValue({ data: { status: gameStatus }, error: null })
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
+    // at_bats select (latest)
+    const abSingle = vi.fn().mockResolvedValue({ data: lastAtBat, error: lastAtBat ? null : { message: 'not found' } })
+    const abLimit = vi.fn().mockReturnValue({ single: abSingle })
+    const abOrder = vi.fn().mockReturnValue({ limit: abLimit })
+    const abEq = vi.fn().mockReturnValue({ order: abOrder })
+    const abSelectFn = vi.fn().mockReturnValue({ eq: abEq })
+
+    // at_bats update
+    const abUpdateEq = vi.fn().mockResolvedValue(updateResult)
+    const abUpdateFn = vi.fn().mockReturnValue({ eq: abUpdateEq })
+
+    const insertFn = vi.fn().mockResolvedValue(insertResult)
+
+    const from = vi.fn((table: string) => {
+      if (table === 'games') return { select: gameSelectFn }
+      if (table === 'at_bats') return { select: abSelectFn, update: abUpdateFn }
+      if (table === 'runner_events') return { insert: insertFn }
+      return {}
+    })
+
+    return {
+      mock: {
+        auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+        from,
+      },
+      insertFn,
+    }
+  }
+
+  const baseInput = {
+    gameId: 'game-1',
+    eventType: 'wild_pitch' as const,
+    advances: [{ lineupId: 'lineup-r1', fromBase: '1st' as const, toBase: '2nd' as const }],
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    const { mock } = makeAdvanceMock({ user: null })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction(baseInput)
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('試合が進行中でない場合エラーを返す', async () => {
+    const { mock } = makeAdvanceMock({ gameStatus: 'finished' })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction(baseInput)
+    expect(result).toEqual({ error: '試合が進行中ではありません' })
+  })
+
+  it('打席がない場合エラーを返す', async () => {
+    const { mock } = makeAdvanceMock({ lastAtBat: null })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction(baseInput)
+    expect(result).toEqual({ error: '打席が記録されていないためイベントを記録できません' })
+  })
+
+  it('WP: runner_events に wild_pitch を INSERT', async () => {
+    const { mock, insertFn } = makeAdvanceMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction(baseInput)
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-r1',
+      event_type: 'wild_pitch',
+    })
+  })
+
+  it('ホーム進塁: event + scored の2件を INSERT', async () => {
+    const { mock, insertFn } = makeAdvanceMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction({
+      gameId: 'game-1',
+      eventType: 'passed_ball',
+      advances: [{ lineupId: 'lineup-r1', fromBase: '3rd', toBase: 'home' }],
+    })
+    expect(result).toEqual({ ok: true })
+    expect(insertFn).toHaveBeenCalledTimes(2)
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-r1',
+      event_type: 'passed_ball',
+    })
+    expect(insertFn).toHaveBeenCalledWith({
+      at_bat_id: 'ab-1',
+      lineup_id: 'lineup-r1',
+      event_type: 'scored',
+    })
+  })
+
+  it('INSERT エラーの場合エラーを返す', async () => {
+    const { mock } = makeAdvanceMock({ insertResult: { error: { message: 'insert error' } } })
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await recordRunnerAdvanceAction(baseInput)
+    expect(result).toEqual({ error: '走者進塁の記録に失敗しました' })
   })
 })

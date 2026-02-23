@@ -3,28 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getPitchingStatsDelta } from "./pitching-stats";
-
-interface LineupEntry {
-  battingOrder: number;
-  playerId: string | null;
-  playerName: string | null;
-  position: string | null;
-}
-
-interface DhPitcher {
-  playerId: string | null;
-  playerName: string;
-}
-
-interface SaveLineupInput {
-  gameId: string;
-  homeLineup: LineupEntry[];
-  visitorLineup: LineupEntry[];
-  homePitcherOrder: number;
-  visitorPitcherOrder: number;
-  homeDhPitcher?: DhPitcher;
-  visitorDhPitcher?: DhPitcher;
-}
+import {
+  createGameSchema,
+  updateGameSchema,
+  saveLineupSchema,
+  recordAtBatSchema,
+  changePitcherSchema,
+  recordStealSchema,
+  substitutePlayerSchema,
+  changePositionSchema,
+  recordRunnerAdvanceSchema,
+  parseOrError,
+} from "./validation";
 
 export async function createGameAction(input: {
   teamId: string;
@@ -35,6 +25,9 @@ export async function createGameAction(input: {
   innings: number;
   useDh: boolean;
 }) {
+  const parsed = parseOrError(createGameSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -44,7 +37,6 @@ export async function createGameAction(input: {
 
   const opponentName = input.opponentName.trim();
   if (!opponentName) return { error: "相手チーム名を入力してください" };
-  if (!input.gameDate) return { error: "試合日を入力してください" };
 
   const { data: game, error: insertError } = await supabase
     .from("games")
@@ -69,13 +61,35 @@ export async function createGameAction(input: {
   return { gameId: game.id };
 }
 
-export async function saveLineupAction(input: SaveLineupInput) {
+export async function saveLineupAction(input: {
+  gameId: string;
+  homeLineup: { battingOrder: number; playerId: string | null; playerName: string | null; position: string | null }[];
+  visitorLineup: { battingOrder: number; playerId: string | null; playerName: string | null; position: string | null }[];
+  homePitcherOrder: number;
+  visitorPitcherOrder: number;
+  homeDhPitcher?: { playerId: string | null; playerName: string };
+  visitorDhPitcher?: { playerId: string | null; playerName: string };
+}) {
+  const parsed = parseOrError(saveLineupSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (game && game.status !== "scheduled") {
+    return { error: "試合前の試合のみオーダーを変更できます" };
+  }
 
   // Validation
   for (const [label, lineup] of [
@@ -216,13 +230,7 @@ export async function updateGameDhAction(gameId: string, useDh: boolean) {
 
 // ---- At-bat recording ----
 
-interface RunnerDestination {
-  lineupId: string;
-  event: "scored" | "out" | "stay";
-  toBase?: "1st" | "2nd" | "3rd";
-}
-
-interface RecordAtBatInput {
+export async function recordAtBatAction(input: {
   gameId: string;
   inning: number;
   inningHalf: "top" | "bottom";
@@ -232,21 +240,30 @@ interface RecordAtBatInput {
   rbi: number;
   pitchCount: number;
   pitches: ("ball" | "swinging" | "looking" | "foul")[];
-  // Runners on base at start of at-bat (snapshot)
   baseRunnersBefore: { base: string; lineupId: string }[];
-  // What happened to each runner + batter
-  runnerDestinations: RunnerDestination[];
-  // Runners on base after this at-bat (for accurate state reconstruction)
+  runnerDestinations: { lineupId: string; event: "scored" | "out" | "stay"; toBase?: "1st" | "2nd" | "3rd" }[];
   runnersAfter?: { base: string; lineupId: string }[];
-}
+}) {
+  const parsed = parseOrError(recordAtBatSchema, input);
+  if (parsed.error) return { error: parsed.error };
 
-export async function recordAtBatAction(input: RecordAtBatInput) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game || game.status !== "in_progress") {
+    return { error: "試合が進行中ではありません" };
+  }
 
   // 1. Insert at_bat
   const { data: atBat, error: abError } = await supabase
@@ -377,6 +394,9 @@ export async function changePitcherAction(input: {
   newPitcherLineupId: string;
   fieldingTeamSide: "home" | "visitor";
 }) {
+  const parsed = parseOrError(changePitcherSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -436,6 +456,9 @@ export async function recordStealAction(input: {
   eventType: "stolen_base" | "caught_stealing";
   fromBase: "1st" | "2nd" | "3rd";
 }) {
+  const parsed = parseOrError(recordStealSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -496,18 +519,17 @@ export async function substitutePlayerAction(input: {
   newPosition: string;
   currentInning: number;
   type: "pinch_hitter" | "pinch_runner";
-  replacedLineupId?: string; // for pinch runner: the lineup_id being replaced on base
+  replacedLineupId?: string;
 }) {
+  const parsed = parseOrError(substitutePlayerSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
-
-  if (!input.newPlayerName.trim()) {
-    return { error: "交代選手の名前を入力してください" };
-  }
 
   // Insert new lineup entry
   const { data: newLineup, error: insertError } = await supabase
@@ -562,16 +584,15 @@ export async function changePositionAction(input: {
   gameId: string;
   changes: { lineupId: string; newPosition: string }[];
 }) {
+  const parsed = parseOrError(changePositionSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
-
-  if (input.changes.length === 0) {
-    return { error: "変更する守備位置を選択してください" };
-  }
 
   for (const change of input.changes) {
     const { error } = await supabase
@@ -590,12 +611,27 @@ export async function changePositionAction(input: {
 }
 
 export async function finishGameAction(gameId: string) {
+  if (!gameId) return { error: "試合IDが不正です" };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  {
+    const { data: game } = await supabase
+      .from("games")
+      .select("status")
+      .eq("id", gameId)
+      .single();
+
+    if (!game || game.status !== "in_progress") {
+      return { error: "試合が進行中ではありません" };
+    }
+  }
 
   // Close all open pitching records
   const { data: openRecords } = await supabase
@@ -648,6 +684,9 @@ export async function updateGameAction(input: {
   innings: number;
   useDh: boolean;
 }) {
+  const parsed = parseOrError(updateGameSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -657,7 +696,6 @@ export async function updateGameAction(input: {
 
   const opponentName = input.opponentName.trim();
   if (!opponentName) return { error: "相手チーム名を入力してください" };
-  if (!input.gameDate) return { error: "試合日を入力してください" };
 
   // Only scheduled games can be edited
   const { data: game } = await supabase
@@ -724,12 +762,34 @@ export async function deleteGameAction(gameId: string) {
 }
 
 export async function startGameAction(gameId: string) {
+  if (!gameId) return { error: "試合IDが不正です" };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", gameId)
+    .single();
+
+  if (!game) return { error: "試合が見つかりません" };
+  if (game.status !== "scheduled") return { error: "試合前の試合のみ開始できます" };
+
+  // Check lineup exists
+  const { count } = await supabase
+    .from("lineups")
+    .select("id", { count: "exact", head: true })
+    .eq("game_id", gameId);
+
+  if (!count || count === 0) {
+    return { error: "オーダーが登録されていません" };
+  }
 
   const { error } = await supabase
     .from("games")
@@ -743,5 +803,215 @@ export async function startGameAction(gameId: string) {
 
   revalidatePath("/");
   revalidatePath(`/games/${gameId}`);
+  return { ok: true };
+}
+
+// ---- Undo last at-bat ----
+
+export async function undoLastAtBatAction(gameId: string) {
+  if (!gameId) return { error: "試合IDが不正です" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", gameId)
+    .single();
+
+  if (!game || game.status !== "in_progress") {
+    return { error: "試合が進行中ではありません" };
+  }
+
+  // Get the latest at-bat
+  const { data: lastAtBat } = await supabase
+    .from("at_bats")
+    .select("id, inning, inning_half, batting_order, lineup_id, result")
+    .eq("game_id", gameId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!lastAtBat) {
+    return { error: "取り消す打席がありません" };
+  }
+
+  // Get runner_events for this at-bat (to reverse pitching stats)
+  const { data: runnerEvents } = await supabase
+    .from("runner_events")
+    .select("lineup_id, event_type")
+    .eq("at_bat_id", lastAtBat.id);
+
+  // Reverse pitching stats
+  if (lastAtBat.result) {
+    const destinations = (runnerEvents ?? [])
+      .filter((e) => e.event_type === "scored" || e.event_type === "out")
+      .map((e) => ({
+        lineupId: e.lineup_id,
+        event: e.event_type as "scored" | "out",
+      }));
+
+    const delta = getPitchingStatsDelta(lastAtBat.result, destinations);
+    const hasDelta =
+      delta.outs > 0 ||
+      delta.hits > 0 ||
+      delta.runs > 0 ||
+      delta.walks > 0 ||
+      delta.strikeouts > 0;
+
+    if (hasDelta) {
+      const fieldingSide = lastAtBat.inning_half === "top" ? "home" : "visitor";
+
+      const { data: openRecords } = await supabase
+        .from("pitching_records")
+        .select("id, lineup_id, outs_recorded, hits, runs, earned_runs, walks, strikeouts")
+        .eq("game_id", gameId)
+        .is("inning_to", null);
+
+      const { data: fieldingLineups } = await supabase
+        .from("lineups")
+        .select("id")
+        .eq("game_id", gameId)
+        .eq("team_side", fieldingSide);
+
+      const fieldingIds = new Set((fieldingLineups ?? []).map((l) => l.id));
+      const pitcherRecord = (openRecords ?? []).find((r) => fieldingIds.has(r.lineup_id));
+
+      if (pitcherRecord) {
+        await supabase
+          .from("pitching_records")
+          .update({
+            outs_recorded: Math.max(0, pitcherRecord.outs_recorded - delta.outs),
+            hits: Math.max(0, pitcherRecord.hits - delta.hits),
+            runs: Math.max(0, pitcherRecord.runs - delta.runs),
+            earned_runs: Math.max(0, pitcherRecord.earned_runs - delta.earnedRuns),
+            walks: Math.max(0, pitcherRecord.walks - delta.walks),
+            strikeouts: Math.max(0, pitcherRecord.strikeouts - delta.strikeouts),
+          })
+          .eq("id", pitcherRecord.id);
+      }
+    }
+  }
+
+  // Delete the at-bat (CASCADE deletes pitches, base_runners, runner_events)
+  const { error: deleteError } = await supabase
+    .from("at_bats")
+    .delete()
+    .eq("id", lastAtBat.id);
+
+  if (deleteError) {
+    console.error("undoLastAtBat delete error:", deleteError);
+    return { error: "打席の取り消しに失敗しました" };
+  }
+
+  revalidatePath(`/games/${gameId}`);
+  return {
+    ok: true,
+    undone: {
+      inning: lastAtBat.inning,
+      inningHalf: lastAtBat.inning_half,
+      battingOrder: lastAtBat.batting_order,
+      result: lastAtBat.result,
+    },
+  };
+}
+
+// ---- Runner advance (WP/PB/BK) ----
+
+export async function recordRunnerAdvanceAction(input: {
+  gameId: string;
+  eventType: "wild_pitch" | "passed_ball" | "balk";
+  advances: { lineupId: string; fromBase: "1st" | "2nd" | "3rd"; toBase: "2nd" | "3rd" | "home" }[];
+}) {
+  const parsed = parseOrError(recordRunnerAdvanceSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Check game status
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game || game.status !== "in_progress") {
+    return { error: "試合が進行中ではありません" };
+  }
+
+  // Find the most recent at-bat
+  const { data: lastAtBat } = await supabase
+    .from("at_bats")
+    .select("id, runners_after")
+    .eq("game_id", input.gameId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!lastAtBat) {
+    return { error: "打席が記録されていないためイベントを記録できません" };
+  }
+
+  // Insert runner_events for each advancing runner
+  for (const advance of input.advances) {
+    const { error: reError } = await supabase.from("runner_events").insert({
+      at_bat_id: lastAtBat.id,
+      lineup_id: advance.lineupId,
+      event_type: input.eventType,
+    });
+
+    if (reError) {
+      console.error("recordRunnerAdvance runner_event error:", reError);
+      return { error: "走者進塁の記録に失敗しました" };
+    }
+
+    // If runner advanced to home, also insert scored event
+    if (advance.toBase === "home") {
+      const { error: scoredError } = await supabase.from("runner_events").insert({
+        at_bat_id: lastAtBat.id,
+        lineup_id: advance.lineupId,
+        event_type: "scored",
+      });
+
+      if (scoredError) {
+        console.error("recordRunnerAdvance scored error:", scoredError);
+      }
+    }
+  }
+
+  // Update runners_after on the at-bat to reflect new positions
+  if (lastAtBat.runners_after) {
+    const currentRunners = lastAtBat.runners_after as { base: string; lineup_id: string }[];
+    const advanceMap = new Map(input.advances.map((a) => [a.lineupId, a]));
+
+    const updatedRunners = currentRunners
+      .map((r) => {
+        const advance = advanceMap.get(r.lineup_id);
+        if (advance) {
+          if (advance.toBase === "home") return null; // scored, remove from bases
+          return { ...r, base: advance.toBase };
+        }
+        return r;
+      })
+      .filter((r): r is { base: string; lineup_id: string } => r !== null);
+
+    await supabase
+      .from("at_bats")
+      .update({ runners_after: updatedRunners })
+      .eq("id", lastAtBat.id);
+  }
+
+  revalidatePath(`/games/${input.gameId}`);
   return { ok: true };
 }

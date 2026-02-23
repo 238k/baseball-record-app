@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, ClipboardEdit, Eye, Play } from "lucide-react";
+import { ArrowLeft, ClipboardEdit, Eye, Pencil, Play } from "lucide-react";
 import { GameStatsTabs } from "@/components/stats/GameStatsTabs";
+import { GameActionButtons } from "@/components/game/GameActionButtons";
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "試合前",
@@ -36,10 +37,12 @@ const STATUS_VARIANTS: Record<
 };
 
 interface LineupRow {
+  id: string;
   batting_order: number;
   team_side: string;
   player_name: string | null;
   position: string | null;
+  inning_from: number;
 }
 
 export default async function GameDetailPage({
@@ -64,9 +67,10 @@ export default async function GameDetailPage({
   const [lineupsResult, teamResult, batterResult, pitcherResult] = await Promise.all([
     supabase
       .from("lineups")
-      .select("batting_order, team_side, player_name, position")
+      .select("id, batting_order, team_side, player_name, position, inning_from")
       .eq("game_id", gameId)
-      .order("batting_order"),
+      .order("batting_order")
+      .order("inning_from"),
     supabase
       .from("teams")
       .select("name")
@@ -95,28 +99,35 @@ export default async function GameDetailPage({
   const myTeamSide = game.is_home ? "home" : "visitor";
   const opponentSide = game.is_home ? "visitor" : "home";
 
-  const allRows = lineups ?? [];
-
-  // In DH games, find batting_orders that have a DH entry per side
-  const dhOrders: Record<string, Set<number>> = { home: new Set(), visitor: new Set() };
-  if (game.use_dh) {
-    for (const l of allRows) {
-      if (l.position === "DH") dhOrders[l.team_side].add(l.batting_order);
+  // Keep only the latest entry per (team_side, batting_order) — substituted players have higher inning_from
+  // DH pitchers (position=投 sharing batting_order with DH) are kept separately
+  const latestByKey = new Map<string, LineupRow>();
+  const dhPitchers: LineupRow[] = [];
+  for (const l of (lineups ?? []) as LineupRow[]) {
+    // In DH games, pitchers sharing batting_order with a DH entry are handled separately
+    if (game.use_dh && l.position === "投") {
+      const hasDhAtSameOrder = (lineups ?? []).some(
+        (other: LineupRow) => other.team_side === l.team_side && other.batting_order === l.batting_order && other.position === "DH"
+      );
+      if (hasDhAtSameOrder) {
+        dhPitchers.push(l);
+        continue;
+      }
+    }
+    const key = `${l.team_side}-${l.batting_order}`;
+    const existing = latestByKey.get(key);
+    if (!existing || l.inning_from >= existing.inning_from) {
+      latestByKey.set(key, l);
     }
   }
+  const allRows = Array.from(latestByKey.values());
 
-  // Separate DH pitchers (position=投 sharing batting_order with DH) from batting lineup
-  const mySideRows = allRows.filter((l: LineupRow) => l.team_side === myTeamSide);
-  const myDhPitcher = game.use_dh
-    ? mySideRows.find((l) => l.position === "投" && dhOrders[myTeamSide].has(l.batting_order))
-    : null;
-  const myLineup = mySideRows.filter((l) => l !== myDhPitcher);
+  // DH pitchers already separated into dhPitchers array above
+  const myLineup = allRows.filter((l) => l.team_side === myTeamSide);
+  const myDhPitcher = dhPitchers.find((l) => l.team_side === myTeamSide) ?? null;
 
-  const opponentSideRows = allRows.filter((l: LineupRow) => l.team_side === opponentSide);
-  const opponentDhPitcher = game.use_dh
-    ? opponentSideRows.find((l) => l.position === "投" && dhOrders[opponentSide].has(l.batting_order))
-    : null;
-  const opponentLineupRaw = opponentSideRows.filter((l) => l !== opponentDhPitcher);
+  const opponentLineupRaw = allRows.filter((l) => l.team_side === opponentSide);
+  const opponentDhPitcher = dhPitchers.find((l) => l.team_side === opponentSide) ?? null;
 
   // Hide opponent lineup if all entries are placeholders
   const hasRealOpponentData = opponentLineupRaw.some(
@@ -191,43 +202,44 @@ export default async function GameDetailPage({
         lineupContent
       )}
 
-      <div className="flex gap-3">
-        {game.status === "scheduled" && (
-          <Link href={`/games/${gameId}/lineup`} className="flex-1">
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full min-h-16 text-lg"
-            >
-              <ClipboardEdit className="mr-2 h-5 w-5" />
-              オーダーを編集する
-            </Button>
-          </Link>
-        )}
-        {game.status === "in_progress" && (
-          <>
-            <Link href={`/games/${gameId}/input`} className="flex-1">
-              <Button
-                size="lg"
-                className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
-              >
-                <Play className="mr-2 h-5 w-5" />
-                記録を入力する
-              </Button>
-            </Link>
-            <Link href={`/games/${gameId}/spectate`} className="flex-1">
+      {game.status === "scheduled" && (
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <Link href={`/games/${gameId}/lineup`} className="flex-1">
               <Button
                 size="lg"
                 variant="outline"
                 className="w-full min-h-16 text-lg"
               >
-                <Eye className="mr-2 h-5 w-5" />
-                観戦する
+                <ClipboardEdit className="mr-2 h-5 w-5" />
+                オーダーを編集する
               </Button>
             </Link>
-          </>
-        )}
-        {game.status === "finished" && (
+            <Link href={`/games/${gameId}/edit`} className="flex-1">
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full min-h-16 text-lg"
+              >
+                <Pencil className="mr-2 h-5 w-5" />
+                試合情報を編集
+              </Button>
+            </Link>
+          </div>
+          <GameActionButtons gameId={gameId} hasLineup={myLineup.length > 0} />
+        </div>
+      )}
+      {game.status === "in_progress" && (
+        <div className="flex gap-3">
+          <Link href={`/games/${gameId}/input`} className="flex-1">
+            <Button
+              size="lg"
+              className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
+            >
+              <Play className="mr-2 h-5 w-5" />
+              記録を入力する
+            </Button>
+          </Link>
           <Link href={`/games/${gameId}/spectate`} className="flex-1">
             <Button
               size="lg"
@@ -235,11 +247,23 @@ export default async function GameDetailPage({
               className="w-full min-h-16 text-lg"
             >
               <Eye className="mr-2 h-5 w-5" />
-              試合結果を見る
+              観戦する
             </Button>
           </Link>
-        )}
-      </div>
+        </div>
+      )}
+      {game.status === "finished" && (
+        <Link href={`/games/${gameId}/spectate`} className="flex-1">
+          <Button
+            size="lg"
+            variant="outline"
+            className="w-full min-h-16 text-lg"
+          >
+            <Eye className="mr-2 h-5 w-5" />
+            試合結果を見る
+          </Button>
+        </Link>
+      )}
     </div>
   );
 }
@@ -269,7 +293,7 @@ function LineupTable({
           </TableHeader>
           <TableBody>
             {lineup.map((row) => (
-              <TableRow key={row.batting_order}>
+              <TableRow key={row.id}>
                 <TableCell className="text-center font-medium">
                   {row.batting_order}
                 </TableCell>

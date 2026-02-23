@@ -1,3 +1,4 @@
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -15,14 +16,22 @@ type BatterCareerStats = Database["public"]["Views"]["v_batter_career_stats"]["R
 interface GameModeProps {
   mode: "game"
   data: BatterGameStats[]
+  teamId?: never
 }
 
 interface CareerModeProps {
   mode: "career"
   data: BatterCareerStats[]
+  teamId?: string
 }
 
-type BatterStatsTableProps = GameModeProps | CareerModeProps
+interface PlayerModeProps {
+  mode: "player"
+  data: (BatterGameStats & { game_date?: string | null; opponent_name?: string | null })[]
+  teamId?: string
+}
+
+type BatterStatsTableProps = GameModeProps | CareerModeProps | PlayerModeProps
 
 export function BatterStatsTable(props: BatterStatsTableProps) {
   if (props.data.length === 0) {
@@ -36,7 +45,10 @@ export function BatterStatsTable(props: BatterStatsTableProps) {
   if (props.mode === "game") {
     return <GameBatterTable data={props.data} />
   }
-  return <CareerBatterTable data={props.data} />
+  if (props.mode === "player") {
+    return <PlayerBatterTable data={props.data} teamId={props.teamId} />
+  }
+  return <CareerBatterTable data={props.data} teamId={props.teamId} />
 }
 
 function GameBatterTable({ data }: { data: BatterGameStats[] }) {
@@ -82,7 +94,57 @@ function GameBatterTable({ data }: { data: BatterGameStats[] }) {
   )
 }
 
-function CareerBatterTable({ data }: { data: BatterCareerStats[] }) {
+function PlayerBatterTable({ data, teamId }: {
+  data: (BatterGameStats & { game_date?: string | null; opponent_name?: string | null })[]
+  teamId?: string
+}) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>日付</TableHead>
+          <TableHead>対戦</TableHead>
+          <TableHead className="text-right">打席</TableHead>
+          <TableHead className="text-right">打数</TableHead>
+          <TableHead className="text-right">安打</TableHead>
+          <TableHead className="text-right">打率</TableHead>
+          <TableHead className="text-right">打点</TableHead>
+          <TableHead className="text-right">本塁打</TableHead>
+          <TableHead className="text-right">三振</TableHead>
+          <TableHead className="text-right">四球</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.map((row) => (
+          <TableRow key={row.game_id}>
+            <TableCell className="whitespace-nowrap">
+              {row.game_id && teamId ? (
+                <Link href={`/games/${row.game_id}`} className="text-primary hover:underline" prefetch={false}>
+                  {row.game_date ?? "—"}
+                </Link>
+              ) : (
+                row.game_date ?? "—"
+              )}
+            </TableCell>
+            <TableCell>{row.opponent_name ?? "—"}</TableCell>
+            <TableCell className="text-right">{row.plate_appearances ?? 0}</TableCell>
+            <TableCell className="text-right">{row.at_bats ?? 0}</TableCell>
+            <TableCell className="text-right">{row.hits ?? 0}</TableCell>
+            <TableCell className="text-right font-mono">
+              {formatAvg(row.hits ?? 0, row.at_bats ?? 0)}
+            </TableCell>
+            <TableCell className="text-right">{row.rbi ?? 0}</TableCell>
+            <TableCell className="text-right">{row.home_runs ?? 0}</TableCell>
+            <TableCell className="text-right">{row.strikeouts ?? 0}</TableCell>
+            <TableCell className="text-right">{row.walks ?? 0}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function CareerBatterTable({ data, teamId }: { data: BatterCareerStats[]; teamId?: string }) {
   return (
     <Table>
       <TableHeader>
@@ -110,9 +172,16 @@ function CareerBatterTable({ data }: { data: BatterCareerStats[] }) {
           const hbp = row.hit_by_pitch ?? 0
           const sacFlies = row.sac_flies ?? 0
           const totalBases = row.total_bases ?? 0
+          const nameCell = teamId && row.player_id ? (
+            <Link href={`/team/${teamId}/players/${row.player_id}`} className="text-primary hover:underline" prefetch={false}>
+              {row.name ?? "—"}
+            </Link>
+          ) : (
+            row.name ?? "—"
+          )
           return (
             <TableRow key={row.player_id}>
-              <TableCell>{row.name ?? "—"}</TableCell>
+              <TableCell>{nameCell}</TableCell>
               <TableCell className="text-right">{row.games ?? 0}</TableCell>
               <TableCell className="text-right">{row.plate_appearances ?? 0}</TableCell>
               <TableCell className="text-right">{atBats}</TableCell>

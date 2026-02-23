@@ -104,18 +104,18 @@ export default function PlayersPage() {
           {players.map((player) => (
             <Card key={player.id} className={player.is_active ? '' : 'opacity-60'}>
               <CardContent className="py-3 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <span className="text-muted-foreground w-8 text-right font-mono">
+                <Link href={`/team/${teamId}/players/${player.id}`} className="flex items-center gap-4 flex-1 min-w-0">
+                  <span className="text-muted-foreground w-8 text-right font-mono shrink-0">
                     {player.number ?? '-'}
                   </span>
-                  <span className="text-lg font-medium">{player.name}</span>
+                  <span className="text-lg font-medium hover:text-primary transition-colors">{player.name}</span>
                   {player.position && (
                     <Badge variant="outline">{player.position}</Badge>
                   )}
                   {!player.is_active && (
                     <Badge variant="secondary">引退</Badge>
                   )}
-                </div>
+                </Link>
                 <div className="flex items-center gap-1">
                   <PlayerForm
                     teamId={teamId}

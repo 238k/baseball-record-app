@@ -66,7 +66,7 @@ export default async function TeamStatsPage({
           <CardTitle className="text-lg">打者成績</CardTitle>
         </CardHeader>
         <CardContent className="px-2">
-          <BatterStatsTable mode="career" data={batterStats} />
+          <BatterStatsTable mode="career" data={batterStats} teamId={teamId} />
         </CardContent>
       </Card>
 
@@ -75,7 +75,7 @@ export default async function TeamStatsPage({
           <CardTitle className="text-lg">投手成績</CardTitle>
         </CardHeader>
         <CardContent className="px-2">
-          <PitcherStatsTable mode="career" data={pitcherStats} />
+          <PitcherStatsTable mode="career" data={pitcherStats} teamId={teamId} />
         </CardContent>
       </Card>
     </div>

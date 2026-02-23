@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameState, type BaseRunners } from "@/hooks/useGameState";
 import { useGameSession } from "@/hooks/useGameSession";
-import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction } from "@/app/(main)/games/actions";
+import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction, undoLastAtBatAction, recordRunnerAdvanceAction } from "@/app/(main)/games/actions";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { RunnerDisplay } from "@/components/game/RunnerDisplay";
@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, RefreshCw, Undo2 } from "lucide-react";
 
 // ---- Runner destination types ----
 
@@ -220,6 +220,16 @@ export default function GameInputPage() {
   // Track last result code between confirm and save
   const lastResultCode = useRef("");
   const [finishing, setFinishing] = useState(false);
+
+  // Undo state
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+  const [undoing, setUndoing] = useState(false);
+
+  // WP/PB/BK dialog state
+  const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
+  const [advanceEventType, setAdvanceEventType] = useState<"wild_pitch" | "passed_ball" | "balk">("wild_pitch");
+  const [advanceSelections, setAdvanceSelections] = useState<Record<string, string>>({}); // lineupId → toBase
+  const [advanceSaving, setAdvanceSaving] = useState(false);
 
   // Pitch count state
   const [pitchLog, setPitchLog] = useState<PitchResult[]>([]);
@@ -542,6 +552,96 @@ export default function GameInputPage() {
     router.push(`/games/${gameId}`);
   }, [gameId, router]);
 
+  // ---- Undo handler ----
+
+  const handleUndo = useCallback(async () => {
+    setUndoing(true);
+    setActionError(null);
+
+    const result = await undoLastAtBatAction(gameId);
+
+    setUndoing(false);
+
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+
+    setShowUndoConfirm(false);
+    setPitchLog([]);
+    syncPitchLogToDb([]);
+    await gameState.reload();
+  }, [gameId, gameState, syncPitchLogToDb]);
+
+  // ---- WP/PB/BK handler ----
+
+  const advanceRunnerOptions = useMemo(() => {
+    const options: { lineupId: string; playerName: string; fromBase: "1st" | "2nd" | "3rd"; defaultToBase: string }[] = [];
+    if (gameState.baseRunners.first) {
+      options.push({
+        lineupId: gameState.baseRunners.first.id,
+        playerName: gameState.baseRunners.first.player_name ?? "—",
+        fromBase: "1st",
+        defaultToBase: "2nd",
+      });
+    }
+    if (gameState.baseRunners.second) {
+      options.push({
+        lineupId: gameState.baseRunners.second.id,
+        playerName: gameState.baseRunners.second.player_name ?? "—",
+        fromBase: "2nd",
+        defaultToBase: "3rd",
+      });
+    }
+    if (gameState.baseRunners.third) {
+      options.push({
+        lineupId: gameState.baseRunners.third.id,
+        playerName: gameState.baseRunners.third.player_name ?? "—",
+        fromBase: "3rd",
+        defaultToBase: "home",
+      });
+    }
+    return options;
+  }, [gameState.baseRunners]);
+
+  const handleRunnerAdvance = useCallback(async () => {
+    const advances = Object.entries(advanceSelections)
+      .filter(([, toBase]) => toBase !== "stay")
+      .map(([lineupId, toBase]) => {
+        const runner = advanceRunnerOptions.find((r) => r.lineupId === lineupId);
+        return {
+          lineupId,
+          fromBase: runner!.fromBase,
+          toBase: toBase as "2nd" | "3rd" | "home",
+        };
+      });
+
+    if (advances.length === 0) {
+      setActionError("進塁する走者を選択してください");
+      return;
+    }
+
+    setAdvanceSaving(true);
+    setActionError(null);
+
+    const result = await recordRunnerAdvanceAction({
+      gameId,
+      eventType: advanceEventType,
+      advances,
+    });
+
+    setAdvanceSaving(false);
+
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+
+    setShowAdvanceDialog(false);
+    setAdvanceSelections({});
+    await gameState.reload();
+  }, [advanceSelections, advanceRunnerOptions, gameId, advanceEventType, gameState]);
+
   // Build runner options for steal dialog (only runners whose next base is empty)
   const stealRunnerOptions = useMemo(() => {
     const options: { lineupId: string; playerName: string; fromBase: "1st" | "2nd" | "3rd" }[] = [];
@@ -840,6 +940,17 @@ export default function GameInputPage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              setShowUndoConfirm(true);
+              setActionError(null);
+            }}
+          >
+            <Undo2 className="mr-1 h-4 w-4" />
+            戻す
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => gameState.reload()}
           >
             <RefreshCw className="mr-1 h-4 w-4" />
@@ -904,6 +1015,24 @@ export default function GameInputPage() {
           variant="outline"
           size="lg"
           className="min-h-14 text-base"
+          disabled={advanceRunnerOptions.length === 0}
+          onClick={() => {
+            setAdvanceEventType("wild_pitch");
+            const init: Record<string, string> = {};
+            for (const r of advanceRunnerOptions) {
+              init[r.lineupId] = r.defaultToBase;
+            }
+            setAdvanceSelections(init);
+            setShowAdvanceDialog(true);
+            setActionError(null);
+          }}
+        >
+          WP/PB/BK
+        </Button>
+        <Button
+          variant="outline"
+          size="lg"
+          className="min-h-14 text-base"
           onClick={() => {
             setSubType("pinch_hitter");
             setSubNewPlayerId(null);
@@ -949,7 +1078,7 @@ export default function GameInputPage() {
         <Button
           variant="outline"
           size="lg"
-          className="min-h-14 text-base col-span-2"
+          className="min-h-14 text-base"
           onClick={() => {
             setShowFinishGame(true);
             setActionError(null);
@@ -1351,6 +1480,89 @@ export default function GameInputPage() {
             >
               {subSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               交代する
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- Undo confirm dialog ---- */}
+      <AlertDialog open={showUndoConfirm} onOpenChange={setShowUndoConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>直前の打席を取り消しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              直前に記録した打席結果を取り消します。投手成績も元に戻されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleUndo} disabled={undoing}>
+              {undoing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              取り消す
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ---- WP/PB/BK dialog ---- */}
+      <Dialog open={showAdvanceDialog} onOpenChange={setShowAdvanceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>WP / PB / BK</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Event type selection */}
+            <div className="flex gap-2">
+              {(["wild_pitch", "passed_ball", "balk"] as const).map((type) => (
+                <Button
+                  key={type}
+                  variant={advanceEventType === type ? "default" : "outline"}
+                  size="lg"
+                  className="flex-1"
+                  onClick={() => setAdvanceEventType(type)}
+                >
+                  {type === "wild_pitch" ? "WP" : type === "passed_ball" ? "PB" : "BK"}
+                </Button>
+              ))}
+            </div>
+
+            {/* Runner advance selections */}
+            {advanceRunnerOptions.map((runner) => (
+              <div key={runner.lineupId} className="space-y-1">
+                <label className="text-sm font-medium">
+                  {runner.fromBase === "1st" ? "1塁" : runner.fromBase === "2nd" ? "2塁" : "3塁"}走者: {runner.playerName}
+                </label>
+                <Select
+                  value={advanceSelections[runner.lineupId] ?? "stay"}
+                  onValueChange={(v) => setAdvanceSelections((prev) => ({ ...prev, [runner.lineupId]: v }))}
+                >
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stay" className="text-base">そのまま</SelectItem>
+                    {runner.fromBase === "1st" && (
+                      <SelectItem value="2nd" className="text-base">→2塁</SelectItem>
+                    )}
+                    {(runner.fromBase === "1st" || runner.fromBase === "2nd") && (
+                      <SelectItem value="3rd" className="text-base">→3塁</SelectItem>
+                    )}
+                    <SelectItem value="home" className="text-base">得点</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdvanceDialog(false)}>
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleRunnerAdvance}
+              disabled={advanceSaving || Object.values(advanceSelections).every((v) => v === "stay")}
+            >
+              {advanceSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              記録する
             </Button>
           </DialogFooter>
         </DialogContent>

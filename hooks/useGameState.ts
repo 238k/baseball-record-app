@@ -242,7 +242,7 @@ export function useGameState(gameId: string) {
               else if (ra.base === "3rd") runners.third = player;
             }
             // Apply steal events that occurred after the at-bat result
-            applyStealEvents(runners, events);
+            applyRunnerEvents(runners, events);
           } else {
             // Fallback: infer from result code (for old at-bats without runners_after)
             runners = computeRunnersAfterAtBat(ab, runners, events, allLineups, null);
@@ -307,10 +307,11 @@ export function useGameState(gameId: string) {
 // ---- Helpers ----
 
 /**
- * Apply stolen_base / caught_stealing events on top of current runner positions.
+ * Apply stolen_base / caught_stealing / wild_pitch / passed_ball / balk events
+ * on top of current runner positions.
  * These events are recorded between at-bats but attached to the previous at-bat.
  */
-function applyStealEvents(runners: BaseRunners, events: RunnerEventRow[]): void {
+function applyRunnerEvents(runners: BaseRunners, events: RunnerEventRow[]): void {
   // Remove caught-stealing runners
   const caughtIds = new Set(events.filter((e) => e.event_type === "caught_stealing").map((e) => e.lineup_id));
   for (const csId of caughtIds) {
@@ -319,19 +320,30 @@ function applyStealEvents(runners: BaseRunners, events: RunnerEventRow[]): void 
     if (runners.third?.id === csId) runners.third = null;
   }
 
-  // Advance stolen-base runners
-  const stolenIds = new Set(events.filter((e) => e.event_type === "stolen_base").map((e) => e.lineup_id));
-  for (const stealId of stolenIds) {
-    if (runners.third?.id === stealId) {
+  // Advance runners: stolen_base / wild_pitch / passed_ball / balk
+  const advanceTypes = new Set(["stolen_base", "wild_pitch", "passed_ball", "balk"]);
+  const advanceIds = new Set(
+    events.filter((e) => advanceTypes.has(e.event_type)).map((e) => e.lineup_id)
+  );
+  // Also check if scored (runner reached home via WP/PB/BK)
+  const scoredIds = new Set(events.filter((e) => e.event_type === "scored").map((e) => e.lineup_id));
+
+  for (const advId of advanceIds) {
+    if (runners.third?.id === advId) {
       // 3rd → home (scored event handles removal)
       runners.third = null;
-    } else if (runners.second?.id === stealId) {
-      if (!runners.third) {
+    } else if (runners.second?.id === advId) {
+      if (scoredIds.has(advId)) {
+        // Scored directly from 2nd (e.g., double advance on WP)
+        runners.second = null;
+      } else if (!runners.third) {
         runners.third = runners.second;
         runners.second = null;
       }
-    } else if (runners.first?.id === stealId) {
-      if (!runners.second) {
+    } else if (runners.first?.id === advId) {
+      if (scoredIds.has(advId)) {
+        runners.first = null;
+      } else if (!runners.second) {
         runners.second = runners.first;
         runners.first = null;
       }

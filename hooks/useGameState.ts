@@ -30,6 +30,8 @@ export interface GameInfo {
   status: string;
   innings: number;
   use_dh: boolean;
+  game_date: string;
+  location: string | null;
 }
 
 export interface GameState {
@@ -102,7 +104,7 @@ export function useGameState(gameId: string) {
       // Fetch game
       const { data: game, error: gameError } = await supabase
         .from("games")
-        .select("id, team_id, opponent_name, is_home, status, innings, use_dh")
+        .select("id, team_id, opponent_name, is_home, status, innings, use_dh, game_date, location")
         .eq("id", gameId)
         .single();
 

@@ -9,30 +9,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { BarChart3, CheckCircle2, ClipboardEdit, Eye, Radio } from "lucide-react";
 
-interface GameCardProps {
+interface TodayGameCardProps {
   game: {
     id: string;
     opponent_name: string;
     game_date: string;
     is_home: boolean;
     status: string;
+    location?: string | null;
   };
   score?: { home: number; visitor: number };
   hasLineup?: boolean;
 }
 
-function getDisplayStatus(status: string, hasLineup: boolean) {
-  if (status === "scheduled") {
-    return hasLineup
-      ? { label: "準備完了", variant: "secondary" as const }
-      : { label: "入力中", variant: "secondary" as const };
-  }
-  if (status === "in_progress") return { label: "試合中", variant: "default" as const };
-  if (status === "finished") return { label: "終了", variant: "outline" as const };
-  return { label: status, variant: "secondary" as const };
-}
-
-export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
+export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardProps) {
   const myScore = score
     ? game.is_home ? score.home : score.visitor
     : null;
@@ -42,10 +32,9 @@ export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
 
   const isReady = game.status === "scheduled" && hasLineup;
   const isInputting = game.status === "scheduled" && !hasLineup;
-  const displayStatus = getDisplayStatus(game.status, hasLineup);
 
   return (
-    <Card className="hover:bg-accent/50 transition-colors">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">
@@ -59,22 +48,23 @@ export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
           ) : isReady ? (
             <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
               <CheckCircle2 className="mr-1 h-3 w-3" />
-              {displayStatus.label}
+              準備完了
             </Badge>
-          ) : (
-            <Badge variant={displayStatus.variant}>
-              {displayStatus.label}
-            </Badge>
-          )}
+          ) : isInputting ? (
+            <Badge variant="secondary">入力中</Badge>
+          ) : null}
         </div>
-        <p className="text-sm text-muted-foreground">
-          {game.game_date} / {game.is_home ? "ホーム" : "ビジター"}
-          {myScore !== null && opponentScore !== null && (
-            <span className="ml-2 font-medium text-foreground">
-              {myScore} - {opponentScore}
-            </span>
-          )}
-        </p>
+        <div className="text-sm text-muted-foreground">
+          <p>
+            {game.is_home ? "ホーム" : "ビジター"}
+            {game.location && <span> / {game.location}</span>}
+            {myScore !== null && opponentScore !== null && (
+              <span className="ml-2 font-medium text-foreground">
+                {myScore} - {opponentScore}
+              </span>
+            )}
+          </p>
+        </div>
       </CardHeader>
       <CardContent>
         {isInputting && (

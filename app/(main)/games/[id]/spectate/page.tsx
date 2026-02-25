@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
-import { RunnerDisplay } from "@/components/game/RunnerDisplay";
+import { FieldRunnerDisplay } from "@/components/field/FieldRunnerDisplay";
 import { InningScoreTable } from "@/components/game/InningScoreTable";
 import { RecentAtBatLog } from "@/components/game/RecentAtBatLog";
 import { PitchCountDisplay } from "@/components/game/PitchCountDisplay";
@@ -128,9 +128,9 @@ export default function SpectatePage() {
       {isLive && (
         <Card>
           <CardContent className="pt-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <FieldRunnerDisplay baseRunners={state.baseRunners} className="w-32 h-32 shrink-0" />
               <OutCount outs={state.currentOuts} />
-              <RunnerDisplay baseRunners={state.baseRunners} />
             </div>
             <div className="flex items-center justify-between text-sm">
               <div>

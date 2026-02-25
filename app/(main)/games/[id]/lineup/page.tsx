@@ -33,7 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, ChevronDown, Loader2, Play, Save } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { FieldPositionSelector } from "@/components/field/FieldPositionSelector";
+import { ArrowLeft, ChevronDown, List, Loader2, Map, Play, Save } from "lucide-react";
 
 interface Player {
   id: string;
@@ -95,6 +97,7 @@ export default function LineupPage() {
   const [myDhPitcherIsUnregistered, setMyDhPitcherIsUnregistered] =
     useState(false);
   const [showOpponentLineup, setShowOpponentLineup] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "field">("list");
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -226,6 +229,21 @@ export default function LineupPage() {
   }, [isDirty]);
 
   const markDirty = useCallback(() => setIsDirty(true), []);
+
+  const handlePositionSwap = useCallback(
+    (posA: string, posB: string) => {
+      const setLineup = game?.is_home ? setHomeLineup : setVisitorLineup;
+      setLineup((prev) =>
+        prev.map((entry) => {
+          if (entry.position === posA) return { ...entry, position: posB };
+          if (entry.position === posB) return { ...entry, position: posA };
+          return entry;
+        })
+      );
+      markDirty();
+    },
+    [game?.is_home, markDirty]
+  );
 
   const handleDhToggle = async (newUseDh: boolean) => {
     if (!game || game.use_dh === newUseDh) return;
@@ -449,13 +467,38 @@ export default function LineupPage() {
         </div>
       </div>
 
-      <LineupEditor
-        title="自チーム"
-        players={players}
-        lineup={myTeamLineup}
-        onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
-        allowUnregistered
-      />
+      <div className="flex justify-end">
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(v) => { if (v) setViewMode(v as "list" | "field"); }}
+        >
+          <ToggleGroupItem value="list" aria-label="リスト表示">
+            <List className="h-4 w-4 mr-1" />
+            リスト
+          </ToggleGroupItem>
+          <ToggleGroupItem value="field" aria-label="フィールド表示">
+            <Map className="h-4 w-4 mr-1" />
+            フィールド
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {viewMode === "field" ? (
+        <FieldPositionSelector
+          lineup={myTeamLineup}
+          useDh={game.use_dh}
+          onPositionSwap={handlePositionSwap}
+        />
+      ) : (
+        <LineupEditor
+          title="自チーム"
+          players={players}
+          lineup={myTeamLineup}
+          onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
+          allowUnregistered
+        />
+      )}
 
       {game.use_dh && (
         <Card>

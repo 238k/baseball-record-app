@@ -7,7 +7,7 @@ import { useGameSession } from "@/hooks/useGameSession";
 import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction, undoLastAtBatAction, recordRunnerAdvanceAction } from "@/app/(main)/games/actions";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
-import { RunnerDisplay } from "@/components/game/RunnerDisplay";
+import { FieldRunnerDisplay } from "@/components/field/FieldRunnerDisplay";
 import { AtBatInput } from "@/components/game/AtBatInput";
 import { PitchCounter, countFromLog, type PitchResult } from "@/components/game/PitchCounter";
 import { InputLockBanner } from "@/components/game/InputLockBanner";
@@ -970,9 +970,9 @@ export default function GameInputPage() {
       />
 
       {/* Outs + Runners */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-4">
+        <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-32 h-32 shrink-0" />
         <OutCount outs={gameState.currentOuts} />
-        <RunnerDisplay baseRunners={gameState.baseRunners} />
       </div>
 
       {/* Current batter */}

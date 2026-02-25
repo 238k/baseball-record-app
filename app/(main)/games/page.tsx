@@ -2,8 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { GameCard } from "@/components/game/GameCard";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, PlusCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default async function GamesListPage() {
   const supabase = await createClient();
@@ -78,7 +77,7 @@ export default async function GamesListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <Link
           href="/"
           prefetch={false}
@@ -87,14 +86,6 @@ export default async function GamesListPage() {
           <ArrowLeft className="mr-1 h-4 w-4" />
           トップに戻る
         </Link>
-        {teams.length > 0 && (
-          <Link href="/games/new">
-            <Button size="lg" className="min-h-16 text-lg">
-              <PlusCircle className="mr-2 h-5 w-5" />
-              新規試合登録
-            </Button>
-          </Link>
-        )}
       </div>
 
       <h1 className="text-2xl font-bold">試合一覧</h1>

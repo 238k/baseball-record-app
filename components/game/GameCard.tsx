@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, CheckCircle2, ClipboardEdit, Eye, Radio } from "lucide-react";
+import { CheckCircle2, ClipboardEdit, Eye, Play, Radio } from "lucide-react";
 
 interface GameCardProps {
   game: {
@@ -25,7 +25,7 @@ function getDisplayStatus(status: string, hasLineup: boolean) {
   if (status === "scheduled") {
     return hasLineup
       ? { label: "準備完了", variant: "secondary" as const }
-      : { label: "入力中", variant: "secondary" as const };
+      : { label: "準備中", variant: "secondary" as const };
   }
   if (status === "in_progress") return { label: "試合中", variant: "default" as const };
   if (status === "finished") return { label: "終了", variant: "outline" as const };
@@ -41,8 +41,8 @@ export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
     : null;
 
   const isReady = game.status === "scheduled" && hasLineup;
-  const isInputting = game.status === "scheduled" && !hasLineup;
   const displayStatus = getDisplayStatus(game.status, hasLineup);
+  const canSpectate = game.status !== "scheduled" || hasLineup;
 
   return (
     <Card className="hover:bg-accent/50 transition-colors">
@@ -77,54 +77,43 @@ export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
         </p>
       </CardHeader>
       <CardContent>
-        {isInputting && (
-          <Link href={`/games/${game.id}/lineup`} prefetch={false}>
+        <div className="flex gap-2">
+          <Link href={`/games/${game.id}/input`} prefetch={false} className="flex-1">
             <Button
               size="lg"
               className="w-full min-h-14 text-lg"
               variant="outline"
             >
-              <ClipboardEdit className="mr-2 h-5 w-5" />
-              オーダー入力
+              {game.status === "scheduled" ? (
+                <><ClipboardEdit className="mr-2 h-5 w-5" />編集</>
+              ) : (
+                <><Play className="mr-2 h-5 w-5" />記録</>
+              )}
             </Button>
           </Link>
-        )}
-        {isReady && (
-          <Link href={`/games/${game.id}`} prefetch={false}>
+          {canSpectate ? (
+            <Link href={`/games/${game.id}`} prefetch={false} className="flex-1">
+              <Button
+                size="lg"
+                className="w-full min-h-14 text-lg"
+                variant="outline"
+              >
+                <Eye className="mr-2 h-5 w-5" />
+                観戦
+              </Button>
+            </Link>
+          ) : (
             <Button
               size="lg"
-              className="w-full min-h-14 text-lg"
+              className="flex-1 min-h-14 text-lg"
               variant="outline"
+              disabled
             >
               <Eye className="mr-2 h-5 w-5" />
-              観戦する
+              観戦
             </Button>
-          </Link>
-        )}
-        {game.status === "in_progress" && (
-          <Link href={`/games/${game.id}`} prefetch={false}>
-            <Button
-              size="lg"
-              className="w-full min-h-14 text-lg"
-              variant="outline"
-            >
-              <Eye className="mr-2 h-5 w-5" />
-              観戦する
-            </Button>
-          </Link>
-        )}
-        {game.status === "finished" && (
-          <Link href={`/games/${game.id}`} prefetch={false}>
-            <Button
-              size="lg"
-              className="w-full min-h-14 text-lg"
-              variant="outline"
-            >
-              <BarChart3 className="mr-2 h-5 w-5" />
-              試合結果
-            </Button>
-          </Link>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   );

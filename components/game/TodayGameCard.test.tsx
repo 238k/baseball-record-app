@@ -3,8 +3,8 @@ import { render, screen } from "@testing-library/react";
 import { TodayGameCard } from "./TodayGameCard";
 
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
+  default: ({ href, children, ...props }: { href: string; children: React.ReactNode; [key: string]: unknown }) => (
+    <a href={href} {...props}>{children}</a>
   ),
 }));
 
@@ -17,27 +17,39 @@ const baseGame = {
 };
 
 describe("TodayGameCard", () => {
-  it("renders '入力中' badge and 'オーダー入力' button for scheduled games without lineup", () => {
+  it("shows '記録' for in_progress and '編集' for scheduled", () => {
+    const { unmount } = render(<TodayGameCard game={{ ...baseGame, status: "in_progress" }} />);
+    expect(screen.getByText("記録")).toBeInTheDocument();
+    expect(screen.getByText("観戦")).toBeInTheDocument();
+    unmount();
+
+    render(<TodayGameCard game={{ ...baseGame, status: "scheduled" }} />);
+    expect(screen.getByText("編集")).toBeInTheDocument();
+  });
+
+  it("links record button to /input and spectate to /games/[id]", () => {
+    render(<TodayGameCard game={{ ...baseGame, status: "in_progress" }} />);
+
+    const links = screen.getAllByRole("link");
+    expect(links[0]).toHaveAttribute("href", "/games/game-1/input");
+    expect(links[1]).toHaveAttribute("href", "/games/game-1");
+  });
+
+  it("disables spectate button for scheduled games without lineup", () => {
     render(<TodayGameCard game={{ ...baseGame, status: "scheduled" }} hasLineup={false} />);
 
-    expect(screen.getByText("入力中")).toBeInTheDocument();
-    expect(screen.getByText("オーダー入力")).toBeInTheDocument();
-
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/games/game-1/lineup");
+    const spectateButton = screen.getByText("観戦").closest("button");
+    expect(spectateButton).toBeDisabled();
   });
 
-  it("renders '準備完了' badge and '観戦する' button for scheduled games with lineup", () => {
+  it("enables spectate button for scheduled games with lineup", () => {
     render(<TodayGameCard game={{ ...baseGame, status: "scheduled" }} hasLineup={true} />);
 
-    expect(screen.getByText("準備完了")).toBeInTheDocument();
-    expect(screen.getByText("観戦する")).toBeInTheDocument();
-
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/games/game-1");
+    const spectateButton = screen.getByText("観戦").closest("button");
+    expect(spectateButton).not.toBeDisabled();
   });
 
-  it("renders LIVE badge and '観戦する' button for in_progress games", () => {
+  it("renders LIVE badge for in_progress games", () => {
     render(
       <TodayGameCard
         game={{ ...baseGame, status: "in_progress" }}
@@ -46,26 +58,7 @@ describe("TodayGameCard", () => {
     );
 
     expect(screen.getByText("LIVE")).toBeInTheDocument();
-    expect(screen.getByText("観戦する")).toBeInTheDocument();
     expect(screen.getByText("3 - 1")).toBeInTheDocument();
-
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/games/game-1");
-  });
-
-  it("renders '試合結果' button for finished games", () => {
-    render(
-      <TodayGameCard
-        game={{ ...baseGame, status: "finished" }}
-        score={{ home: 5, visitor: 2 }}
-      />
-    );
-
-    expect(screen.getByText("試合結果")).toBeInTheDocument();
-    expect(screen.getByText("5 - 2")).toBeInTheDocument();
-
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/games/game-1");
   });
 
   it("shows location when provided", () => {

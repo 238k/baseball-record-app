@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { TodayGameCard } from "@/components/game/TodayGameCard";
+import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 
@@ -90,16 +91,34 @@ export default async function HomePage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">今日の試合</h1>
           {teams.length > 0 && (
-            <Link href="/games/new">
-              <Button size="lg" className="min-h-16 text-lg">
-                <PlusCircle className="mr-2 h-5 w-5" />
-                新規試合登録
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <JoinTeamDialog />
+              <Link href="/games/new">
+                <Button size="lg" className="min-h-16 text-lg">
+                  <PlusCircle className="mr-2 h-5 w-5" />
+                  新規試合登録
+                </Button>
+              </Link>
+            </div>
           )}
         </div>
 
-        {(games ?? []).length === 0 ? (
+        {teams.length === 0 ? (
+          <div className="text-center py-8 space-y-4">
+            <p className="text-muted-foreground">
+              今日の試合はありません
+            </p>
+            <div className="flex justify-center gap-4">
+              <JoinTeamDialog />
+              <Link href="/team/new">
+                <Button size="lg" variant="outline" className="min-h-16 text-lg">
+                  <PlusCircle className="mr-2 h-5 w-5" />
+                  チームを作成
+                </Button>
+              </Link>
+            </div>
+          </div>
+        ) : (games ?? []).length === 0 ? (
           <p className="text-muted-foreground text-center py-8">
             今日の試合はありません
           </p>

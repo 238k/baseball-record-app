@@ -35,7 +35,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FieldPositionSelector } from "@/components/field/FieldPositionSelector";
-import { ArrowLeft, ChevronDown, List, Loader2, Map, Play, Save } from "lucide-react";
+import { ArrowLeft, ChevronDown, List, Loader2, Map, Pencil, Play, Save } from "lucide-react";
 
 interface Player {
   id: string;
@@ -379,7 +379,7 @@ export default function LineupPage() {
       return;
     }
 
-    router.push(`/games/${gameId}`);
+    router.push(`/games/${gameId}/input`);
   };
 
   if (loadingPage || !game) {
@@ -410,20 +410,36 @@ export default function LineupPage() {
     if (isDirty) {
       setShowLeaveDialog(true);
     } else {
-      router.push(`/games/${gameId}`);
+      router.push("/");
     }
   };
 
   return (
     <div className="space-y-6">
-      <button
-        type="button"
-        onClick={handleNavBack}
-        className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="mr-1 h-4 w-4" />
-        試合詳細に戻る
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={handleNavBack}
+          className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          トップに戻る
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (isDirty) {
+              setShowLeaveDialog(true);
+            } else {
+              router.push(`/games/${gameId}/edit`);
+            }
+          }}
+          className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Pencil className="mr-1 h-4 w-4" />
+          試合設定
+        </button>
+      </div>
 
       <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
         <AlertDialogContent>
@@ -435,7 +451,7 @@ export default function LineupPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>戻る</AlertDialogCancel>
-            <AlertDialogAction onClick={() => router.push(`/games/${gameId}`)}>
+            <AlertDialogAction onClick={() => router.push("/")}>
               離れる
             </AlertDialogAction>
           </AlertDialogFooter>

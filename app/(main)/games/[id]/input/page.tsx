@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useGameState, type BaseRunners } from "@/hooks/useGameState";
 import { useGameSession } from "@/hooks/useGameSession";
 import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction, undoLastAtBatAction, recordRunnerAdvanceAction } from "@/app/(main)/games/actions";
+import { GameActionButtons } from "@/components/game/GameActionButtons";
+import { LineupTable, type LineupRow } from "@/components/game/LineupTable";
 import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { OutCount } from "@/components/game/OutCount";
 import { FieldRunnerDisplay } from "@/components/field/FieldRunnerDisplay";
@@ -40,7 +43,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Loader2, RefreshCw, Undo2 } from "lucide-react";
+import { ArrowLeft, ClipboardEdit, Loader2, RefreshCw, Undo2 } from "lucide-react";
 
 // ---- Runner destination types ----
 
@@ -839,13 +842,71 @@ export default function GameInputPage() {
     );
   }
 
-  if (gameState.game.status !== "in_progress") {
+  if (gameState.game.status !== "in_progress" && gameState.game.status !== "scheduled") {
     return (
       <div className="space-y-4 text-center py-16">
         <p className="text-muted-foreground">この試合は記録入力中ではありません</p>
         <Button variant="outline" onClick={() => router.push(`/games/${gameId}`)}>
           試合詳細に戻る
         </Button>
+      </div>
+    );
+  }
+
+  // ---- SCHEDULED view: show lineup + action buttons ----
+  if (gameState.game.status === "scheduled") {
+    const myTeamSide = gameState.game.is_home ? "home" : "visitor";
+    const lineupRows: LineupRow[] = gameState.lineups
+      .filter((l) => l.team_side === myTeamSide)
+      .map((l) => ({
+        id: l.id,
+        batting_order: l.batting_order,
+        team_side: l.team_side,
+        player_name: l.player_name,
+        position: l.position,
+        inning_from: l.inning_from,
+      }));
+    const hasLineup = lineupRows.length > 0;
+
+    return (
+      <div className="space-y-4 pb-8">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => router.push(`/games/${gameId}`)}
+            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            観戦画面
+          </button>
+        </div>
+
+        <h1 className="text-xl font-bold">
+          {gameState.myTeamName} vs {gameState.game.opponent_name}
+        </h1>
+
+        {hasLineup && (
+          <LineupTable title={gameState.myTeamName} lineup={lineupRows} dhPitcher={null} />
+        )}
+        {!hasLineup && (
+          <p className="text-muted-foreground text-center py-8">
+            オーダーが未登録です
+          </p>
+        )}
+
+        <div className="space-y-3">
+          <Link href={`/games/${gameId}/lineup`}>
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full min-h-16 text-lg"
+            >
+              <ClipboardEdit className="mr-2 h-5 w-5" />
+              オーダーを編集する
+            </Button>
+          </Link>
+          <GameActionButtons gameId={gameId} hasLineup={hasLineup} />
+        </div>
       </div>
     );
   }

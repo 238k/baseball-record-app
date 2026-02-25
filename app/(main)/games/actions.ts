@@ -58,6 +58,7 @@ export async function createGameAction(input: {
   }
 
   revalidatePath("/");
+  revalidatePath("/games");
   return { gameId: game.id };
 }
 
@@ -671,6 +672,7 @@ export async function finishGameAction(gameId: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/games");
   revalidatePath(`/games/${gameId}`);
   return { ok: true };
 }
@@ -725,6 +727,7 @@ export async function updateGameAction(input: {
   }
 
   revalidatePath("/");
+  revalidatePath("/games");
   revalidatePath(`/games/${input.gameId}`);
   return { ok: true };
 }
@@ -758,6 +761,7 @@ export async function deleteGameAction(gameId: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/games");
   return { ok: true };
 }
 
@@ -802,6 +806,7 @@ export async function startGameAction(gameId: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/games");
   revalidatePath(`/games/${gameId}`);
   return { ok: true };
 }

@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { TeamCard } from "@/components/team/TeamCard";
-import { GameCard } from "@/components/game/GameCard";
+import { TodayGameCard } from "@/components/game/TodayGameCard";
 import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import { ChevronRight, PlusCircle } from "lucide-react";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -28,26 +28,49 @@ export default async function HomePage() {
 
   const teamIds = teams.map((t) => t.id);
 
-  // Fetch games for all teams
+  // Today's date in JST (YYYY-MM-DD)
+  const todayString = new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Tokyo",
+  });
+
+  // Fetch today's games only
   const { data: games } = teamIds.length > 0
     ? await supabase
         .from("games")
-        .select("id, opponent_name, game_date, is_home, status")
+        .select("id, opponent_name, game_date, is_home, status, location")
         .in("team_id", teamIds)
+        .eq("game_date", todayString)
         .order("game_date", { ascending: false })
     : { data: [] };
 
-  // Fetch scores for finished games from v_scoreboard
-  const finishedGameIds = (games ?? [])
-    .filter((g) => g.status === "finished")
+  // Fetch lineup existence for scheduled games
+  const scheduledGameIds = (games ?? [])
+    .filter((g) => g.status === "scheduled")
+    .map((g) => g.id);
+
+  const lineupSet = new Set<string>();
+  if (scheduledGameIds.length > 0) {
+    const { data: lineupRows } = await supabase
+      .from("lineups")
+      .select("game_id")
+      .in("game_id", scheduledGameIds);
+
+    for (const row of lineupRows ?? []) {
+      if (row.game_id) lineupSet.add(row.game_id);
+    }
+  }
+
+  // Fetch scores for finished and in_progress games from v_scoreboard
+  const scorableGameIds = (games ?? [])
+    .filter((g) => g.status === "finished" || g.status === "in_progress")
     .map((g) => g.id);
 
   const scoreMap: Record<string, { home: number; visitor: number }> = {};
-  if (finishedGameIds.length > 0) {
+  if (scorableGameIds.length > 0) {
     const { data: scoreRows } = await supabase
       .from("v_scoreboard")
       .select("game_id, inning_half, runs")
-      .in("game_id", finishedGameIds);
+      .in("game_id", scorableGameIds);
 
     for (const row of scoreRows ?? []) {
       if (!row.game_id) continue;
@@ -64,10 +87,10 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* Games Section */}
+      {/* Today's Games Section */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">試合一覧</h1>
+          <h1 className="text-2xl font-bold">今日の試合</h1>
           {teams.length > 0 && (
             <Link href="/games/new">
               <Button size="lg" className="min-h-16 text-lg">
@@ -80,19 +103,31 @@ export default async function HomePage() {
 
         {(games ?? []).length === 0 ? (
           <p className="text-muted-foreground text-center py-8">
-            試合がまだありません
+            今日の試合はありません
           </p>
         ) : (
           <div className="grid gap-4">
             {(games ?? []).map((game) => (
-              <GameCard
+              <TodayGameCard
                 key={game.id}
                 game={game}
                 score={scoreMap[game.id]}
+                hasLineup={lineupSet.has(game.id)}
               />
             ))}
           </div>
         )}
+
+        <Link href="/games">
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full min-h-14 text-base"
+          >
+            すべての試合
+            <ChevronRight className="ml-auto h-5 w-5" />
+          </Button>
+        </Link>
       </section>
 
       {/* Teams Section */}

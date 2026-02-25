@@ -501,20 +501,31 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          default_team_id: string | null
           display_name: string
           id: string
         }
         Insert: {
           created_at?: string
+          default_team_id?: string | null
           display_name: string
           id: string
         }
         Update: {
           created_at?: string
+          default_team_id?: string | null
           display_name?: string
           id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_default_team_id_fkey"
+            columns: ["default_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       runner_events: {
         Row: {

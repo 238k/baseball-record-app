@@ -3,19 +3,36 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { updateProfileAction } from "./actions";
+import { updateProfileAction, updateDefaultTeamAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
+interface Team {
+  id: string;
+  name: string;
+}
+
 export default function SettingsPage() {
   const [displayName, setDisplayName] = useState("");
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [defaultTeamId, setDefaultTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingTeam, setSavingTeam] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const [teamSuccess, setTeamSuccess] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -27,13 +44,27 @@ export default function SettingsPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("display_name")
+        .select("display_name, default_team_id")
         .eq("id", user.id)
         .single();
 
       if (profile) {
         setDisplayName(profile.display_name);
+        setDefaultTeamId(profile.default_team_id);
       }
+
+      const { data: memberships } = await supabase
+        .from("team_members")
+        .select("teams(id, name)")
+        .eq("profile_id", user.id);
+
+      const t = (memberships ?? []).flatMap((m) => {
+        if (!m.teams) return [];
+        const team = m.teams as { id: string; name: string };
+        return [{ id: team.id, name: team.name }];
+      });
+      setTeams(t);
+
       setLoading(false);
     };
     load();
@@ -55,6 +86,25 @@ export default function SettingsPage() {
     }
 
     setSuccess(true);
+  };
+
+  const handleDefaultTeamChange = async (value: string) => {
+    const newTeamId = value === "none" ? null : value;
+    setDefaultTeamId(newTeamId);
+    setSavingTeam(true);
+    setTeamError(null);
+    setTeamSuccess(false);
+
+    const result = await updateDefaultTeamAction(newTeamId);
+
+    setSavingTeam(false);
+
+    if (result.error) {
+      setTeamError(result.error);
+      return;
+    }
+
+    setTeamSuccess(true);
   };
 
   if (loading) {
@@ -116,6 +166,49 @@ export default function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {teams.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">デフォルトチーム</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>チーム選択</Label>
+              <Select
+                value={defaultTeamId ?? "none"}
+                onValueChange={handleDefaultTeamChange}
+                disabled={savingTeam}
+              >
+                <SelectTrigger className="text-lg h-14">
+                  <SelectValue placeholder="選択なし" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" className="text-lg">
+                    選択なし
+                  </SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id} className="text-lg">
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {savingTeam && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                保存中...
+              </div>
+            )}
+            {teamError && <p className="text-destructive text-sm">{teamError}</p>}
+            {teamSuccess && (
+              <p className="text-green-600 text-sm">保存しました</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

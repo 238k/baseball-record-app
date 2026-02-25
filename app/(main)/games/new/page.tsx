@@ -46,6 +46,12 @@ export default function NewGamePage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("default_team_id")
+        .eq("id", user.id)
+        .single();
+
       const { data: memberships } = await supabase
         .from("team_members")
         .select("teams(id, name)")
@@ -57,7 +63,14 @@ export default function NewGamePage() {
         return [{ id: team.id, name: team.name }];
       });
       setTeams(t);
-      if (t.length === 1) setTeamId(t[0].id);
+
+      // Default team selection: default_team_id > single team > none
+      const defaultId = profile?.default_team_id;
+      if (defaultId && t.some((team) => team.id === defaultId)) {
+        setTeamId(defaultId);
+      } else if (t.length === 1) {
+        setTeamId(t[0].id);
+      }
     };
     load();
   }, []);

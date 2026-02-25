@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { TeamCard } from "@/components/team/TeamCard";
 import { TodayGameCard } from "@/components/game/TodayGameCard";
-import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, PlusCircle } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -118,58 +116,6 @@ export default async function HomePage() {
           </div>
         )}
 
-        <Link href="/games">
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full min-h-14 text-base"
-          >
-            すべての試合
-            <ChevronRight className="ml-auto h-5 w-5" />
-          </Button>
-        </Link>
-      </section>
-
-      {/* Teams Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">チーム一覧</h2>
-          <div className="flex gap-2">
-            <JoinTeamDialog />
-            <Link href="/team/new">
-              <Button size="lg" className="min-h-16 text-lg">
-                <PlusCircle className="mr-2 h-5 w-5" />
-                チームを作成
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {teams.length === 0 ? (
-          <div className="text-center py-16 space-y-4">
-            <p className="text-muted-foreground text-lg">
-              チームがまだありません
-            </p>
-            <p className="text-muted-foreground text-sm">
-              チームを作成するか、招待コードでチームに参加してください
-            </p>
-            <div className="flex gap-3 justify-center mt-6">
-              <JoinTeamDialog />
-              <Link href="/team/new">
-                <Button size="lg" className="min-h-16 text-lg">
-                  <PlusCircle className="mr-2 h-5 w-5" />
-                  チームを作成
-                </Button>
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {teams.map((team) => (
-              <TeamCard key={team.id} team={team} />
-            ))}
-          </div>
-        )}
       </section>
     </div>
   );

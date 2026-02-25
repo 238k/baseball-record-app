@@ -35,9 +35,22 @@ export default async function MainLayout({
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" prefetch={false} className="text-xl font-bold">
-            ⚾ 野球記録
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/" prefetch={false} className="text-xl font-bold">
+              ⚾ 野球記録
+            </Link>
+            <nav className="flex items-center gap-3 text-sm">
+              <Link href="/" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">
+                トップ
+              </Link>
+              <Link href="/games" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">
+                試合
+              </Link>
+              <Link href="/teams" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">
+                マイチーム
+              </Link>
+            </nav>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground hidden sm:block">
               {profile?.display_name}

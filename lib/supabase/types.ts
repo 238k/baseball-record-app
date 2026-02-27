@@ -259,39 +259,51 @@ export type Database = {
       games: {
         Row: {
           created_at: string
+          created_by: string
           game_date: string
+          home_team_name: string | null
           id: string
           innings: number
+          is_free_mode: boolean
           is_home: boolean
           location: string | null
           opponent_name: string
           status: string
-          team_id: string
+          team_id: string | null
           use_dh: boolean
+          visitor_team_name: string | null
         }
         Insert: {
           created_at?: string
+          created_by: string
           game_date: string
+          home_team_name?: string | null
           id?: string
           innings?: number
+          is_free_mode?: boolean
           is_home?: boolean
           location?: string | null
           opponent_name: string
           status?: string
-          team_id: string
+          team_id?: string | null
           use_dh?: boolean
+          visitor_team_name?: string | null
         }
         Update: {
           created_at?: string
+          created_by?: string
           game_date?: string
+          home_team_name?: string | null
           id?: string
           innings?: number
+          is_free_mode?: boolean
           is_home?: boolean
           location?: string | null
           opponent_name?: string
           status?: string
-          team_id?: string
+          team_id?: string | null
           use_dh?: boolean
+          visitor_team_name?: string | null
         }
         Relationships: [
           {
@@ -828,6 +840,7 @@ export type Database = {
       }
     }
     Functions: {
+      can_access_game: { Args: { gid: string }; Returns: boolean }
       get_my_team_ids: { Args: never; Returns: string[] }
       get_team_id_by_invite_code: {
         Args: { p_invite_code: string }

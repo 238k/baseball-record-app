@@ -111,10 +111,10 @@ INSERT INTO players (id, team_id, name, number, position) VALUES
   ('d0000011-0000-0000-0000-000000000011', 'c3333333-3333-3333-3333-333333333333', '松本 直樹', '11', NULL);
 
 -- =====================================================
--- 4. サンプル試合2件
+-- 4. サンプル試合3件（チーム試合2件 + フリーモード1件）
 -- =====================================================
 -- 試合1: 通常ルール（DH なし）
-INSERT INTO games (id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh)
+INSERT INTO games (id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh, created_by)
 VALUES (
   'e4444444-4444-4444-4444-444444444444',
   'c3333333-3333-3333-3333-333333333333',
@@ -124,11 +124,12 @@ VALUES (
   true,
   'scheduled',
   9,
-  false
+  false,
+  'a1111111-1111-1111-1111-111111111111'
 );
 
 -- 試合2: DH制
-INSERT INTO games (id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh)
+INSERT INTO games (id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh, created_by)
 VALUES (
   'f5555555-5555-5555-5555-555555555555',
   'c3333333-3333-3333-3333-333333333333',
@@ -138,7 +139,26 @@ VALUES (
   false,
   'scheduled',
   9,
-  true
+  true,
+  'a1111111-1111-1111-1111-111111111111'
+);
+
+-- 試合3: フリーモード
+INSERT INTO games (id, team_id, opponent_name, game_date, location, is_home, status, innings, use_dh, created_by, is_free_mode, home_team_name, visitor_team_name)
+VALUES (
+  'a6666666-6666-6666-6666-666666666666',
+  NULL,
+  '',
+  '2026-03-15',
+  'フリー球場',
+  true,
+  'scheduled',
+  7,
+  false,
+  'a1111111-1111-1111-1111-111111111111',
+  true,
+  'レッドスターズ',
+  'ブルーウェーブ'
 );
 
 -- =====================================================

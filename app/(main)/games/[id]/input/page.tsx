@@ -1183,7 +1183,7 @@ export default function GameInputPage() {
   const halfLabel = gameState.currentHalf === "top" ? "表" : "裏";
   const myScore = gameState.game.is_home ? gameState.score.home : gameState.score.visitor;
   const opponentScore = gameState.game.is_home ? gameState.score.visitor : gameState.score.home;
-  const { balls, strikes, fouls } = pitchCounts;
+  const { balls, strikes } = pitchCounts;
   const countFull = balls >= 4 || strikes >= 3;
   const hasRunners = !!(gameState.baseRunners.first || gameState.baseRunners.second || gameState.baseRunners.third);
 
@@ -1207,21 +1207,7 @@ export default function GameInputPage() {
           <span className="text-xl tabular-nums">{myScore} - {opponentScore}</span>
           <span className="text-sm">{gameState.game.opponent_name}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">{gameState.currentInning}回{halfLabel}</span>
-          <div className="flex gap-1">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className={`w-4 h-4 rounded-full border-2 ${
-                  i < gameState.currentOuts
-                    ? "bg-foreground border-foreground"
-                    : "bg-transparent border-muted-foreground"
-                }`}
-              />
-            ))}
-          </div>
-        </div>
+        <span className="text-sm font-medium">{gameState.currentInning}回{halfLabel}</span>
       </div>
 
       {/* ── Auto-save banner ── */}
@@ -1245,7 +1231,7 @@ export default function GameInputPage() {
         </div>
       )}
 
-      {/* ── Diamond + BSF count + Batter ── */}
+      {/* ── Diamond + BSO count + Batter ── */}
       <div className="flex items-start gap-4 px-1">
         {/* Diamond */}
         <div className="shrink-0">
@@ -1255,7 +1241,7 @@ export default function GameInputPage() {
           </p>
         </div>
 
-        {/* BSF count (vertical) */}
+        {/* BSO count (vertical) */}
         <div className="flex-1 space-y-1.5 pt-1">
           <div className="flex items-center gap-2">
             <span className="text-base font-bold w-5">B</span>
@@ -1284,8 +1270,17 @@ export default function GameInputPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-base font-bold w-5">F</span>
-            <Badge variant="secondary" className="tabular-nums">{fouls}</Badge>
+            <span className="text-base font-bold w-5">O</span>
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className={`w-6 h-6 rounded-full ${
+                    i < gameState.currentOuts ? "bg-red-500" : "bg-muted border border-border"
+                  }`}
+                />
+              ))}
+            </div>
             <Badge variant="outline" className="ml-auto tabular-nums">{pitchLog.length}球</Badge>
           </div>
         </div>

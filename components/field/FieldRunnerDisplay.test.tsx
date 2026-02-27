@@ -10,11 +10,7 @@ vi.mock("framer-motion", () => ({
     rect: ({ children, animate, initial, exit, transition, ...props }: Record<string, unknown>) => (
       <rect {...props}>{children as React.ReactNode}</rect>
     ),
-    g: ({ children, animate, initial, exit, transition, ...props }: Record<string, unknown>) => (
-      <g {...props}>{children as React.ReactNode}</g>
-    ),
   },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 /* eslint-enable @typescript-eslint/no-unused-vars */
 
@@ -41,47 +37,16 @@ describe("FieldRunnerDisplay", () => {
     render(<FieldRunnerDisplay baseRunners={baseRunners} />);
 
     expect(screen.getByTestId("baseball-field-svg")).toBeInTheDocument();
-    expect(screen.queryByTestId("runner-first")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("runner-second")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("runner-third")).not.toBeInTheDocument();
+    expect(screen.getByTestId("base-highlight-first")).toBeInTheDocument();
+    expect(screen.getByTestId("base-highlight-second")).toBeInTheDocument();
+    expect(screen.getByTestId("base-highlight-third")).toBeInTheDocument();
   });
 
-  it("renders runner on first base", () => {
-    const baseRunners: BaseRunners = {
-      first: makePlayer({ id: "l1", player_name: "鈴木一朗", player_number: "51" }),
-      second: null,
-      third: null,
-    };
-
-    render(<FieldRunnerDisplay baseRunners={baseRunners} />);
-
-    expect(screen.getByTestId("runner-first")).toBeInTheDocument();
-    expect(screen.getByText("鈴木一朗")).toBeInTheDocument();
-    expect(screen.getByText("51")).toBeInTheDocument();
-  });
-
-  it("renders runners on all bases", () => {
-    const baseRunners: BaseRunners = {
-      first: makePlayer({ id: "l1", player_name: "選手A", player_number: "1" }),
-      second: makePlayer({ id: "l2", player_name: "選手B", player_number: "2" }),
-      third: makePlayer({ id: "l3", player_name: "選手C", player_number: "3" }),
-    };
-
-    render(<FieldRunnerDisplay baseRunners={baseRunners} />);
-
-    expect(screen.getByTestId("runner-first")).toBeInTheDocument();
-    expect(screen.getByTestId("runner-second")).toBeInTheDocument();
-    expect(screen.getByTestId("runner-third")).toBeInTheDocument();
-    expect(screen.getByText("選手A")).toBeInTheDocument();
-    expect(screen.getByText("選手B")).toBeInTheDocument();
-    expect(screen.getByText("選手C")).toBeInTheDocument();
-  });
-
-  it("renders base highlights for all bases", () => {
+  it("renders base highlights for occupied bases", () => {
     const baseRunners: BaseRunners = {
       first: makePlayer({ id: "l1" }),
       second: null,
-      third: null,
+      third: makePlayer({ id: "l3" }),
     };
 
     render(<FieldRunnerDisplay baseRunners={baseRunners} />);
@@ -89,6 +54,32 @@ describe("FieldRunnerDisplay", () => {
     expect(screen.getByTestId("base-highlight-first")).toBeInTheDocument();
     expect(screen.getByTestId("base-highlight-second")).toBeInTheDocument();
     expect(screen.getByTestId("base-highlight-third")).toBeInTheDocument();
+  });
+
+  it("renders highlights for all bases when loaded", () => {
+    const baseRunners: BaseRunners = {
+      first: makePlayer({ id: "l1" }),
+      second: makePlayer({ id: "l2" }),
+      third: makePlayer({ id: "l3" }),
+    };
+
+    render(<FieldRunnerDisplay baseRunners={baseRunners} />);
+
+    expect(screen.getByTestId("base-highlight-first")).toBeInTheDocument();
+    expect(screen.getByTestId("base-highlight-second")).toBeInTheDocument();
+    expect(screen.getByTestId("base-highlight-third")).toBeInTheDocument();
+  });
+
+  it("does not show pitcher's mound in diamond variant", () => {
+    const baseRunners: BaseRunners = {
+      first: null,
+      second: null,
+      third: null,
+    };
+
+    render(<FieldRunnerDisplay baseRunners={baseRunners} />);
+
+    expect(screen.queryByTestId("pitchers-mound")).not.toBeInTheDocument();
   });
 
   it("applies className prop", () => {

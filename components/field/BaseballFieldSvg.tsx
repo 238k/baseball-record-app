@@ -84,16 +84,18 @@ export function BaseballFieldSvg({
         data-testid="home-plate"
       />
 
-      {/* Pitcher's mound */}
-      <circle
-        cx={200}
-        cy={260}
-        r={8}
-        fill="#c4956a"
-        stroke="#a17a52"
-        strokeWidth={1}
-        data-testid="pitchers-mound"
-      />
+      {/* Pitcher's mound (hidden in diamond-only variant) */}
+      {variant !== "diamond" && (
+        <circle
+          cx={200}
+          cy={260}
+          r={8}
+          fill="#c4956a"
+          stroke="#a17a52"
+          strokeWidth={1}
+          data-testid="pitchers-mound"
+        />
+      )}
 
       {children}
     </svg>

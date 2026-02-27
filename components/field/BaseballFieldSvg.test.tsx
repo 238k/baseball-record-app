@@ -16,11 +16,12 @@ describe("BaseballFieldSvg", () => {
     expect(screen.getByTestId("pitchers-mound")).toBeInTheDocument();
   });
 
-  it("hides outfield grass in diamond variant", () => {
+  it("hides outfield grass and mound in diamond variant", () => {
     render(<BaseballFieldSvg variant="diamond" />);
 
     expect(screen.getByTestId("baseball-field-svg")).toBeInTheDocument();
     expect(screen.queryByTestId("outfield-grass")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pitchers-mound")).not.toBeInTheDocument();
     expect(screen.getByTestId("infield-diamond")).toBeInTheDocument();
   });
 

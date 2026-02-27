@@ -101,7 +101,7 @@ export function FieldRunnerDisplay({
             width={80}
             height={20}
           >
-            <div className="text-[10px] text-center font-medium truncate">
+            <div className="text-[11px] text-center font-medium truncate">
               {runner.player_name ?? ""}
             </div>
           </foreignObject>

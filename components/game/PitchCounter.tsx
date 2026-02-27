@@ -44,11 +44,11 @@ export function PitchCounter({
       {/* Count display */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium w-4">B</span>
+          <span className="text-base font-bold w-5">B</span>
           {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
-              className={`w-4 h-4 rounded-full ${
+              className={`w-6 h-6 rounded-full ${
                 i < balls
                   ? "bg-green-500"
                   : "bg-muted border border-border"
@@ -57,11 +57,11 @@ export function PitchCounter({
           ))}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium w-4">S</span>
+          <span className="text-base font-bold w-5">S</span>
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className={`w-4 h-4 rounded-full ${
+              className={`w-6 h-6 rounded-full ${
                 i < strikes
                   ? "bg-yellow-500"
                   : "bg-muted border border-border"
@@ -70,7 +70,7 @@ export function PitchCounter({
           ))}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-medium w-4">F</span>
+          <span className="text-base font-bold w-5">F</span>
           <Badge variant="secondary" className="tabular-nums">
             {fouls}
           </Badge>

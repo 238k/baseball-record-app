@@ -286,20 +286,32 @@ export function LineupEditor({
             items={sortableIds}
             strategy={verticalListSortingStrategy}
           >
-            {lineup.map((entry, index) => (
-              <SortableLineupRow
-                key={sortableIds[index]}
-                entry={entry}
-                index={index}
-                sortedPlayers={sortedPlayers}
-                allowUnregistered={allowUnregistered}
-                customName={customNames[entry.battingOrder] ?? ""}
-                onPlayerSelect={handlePlayerSelect}
-                onCustomNameChange={handleCustomNameChange}
-                onDirectNameChange={handleDirectNameChange}
-                isUnregistered={isUnregisteredSelected(entry)}
-              />
-            ))}
+            {lineup.map((entry, index) => {
+              // Filter out players already selected in other rows
+              const availablePlayers = sortedPlayers?.filter(
+                (p) =>
+                  p.id === entry.playerId ||
+                  !lineup.some(
+                    (other) =>
+                      other.battingOrder !== entry.battingOrder &&
+                      other.playerId === p.id
+                  )
+              );
+              return (
+                <SortableLineupRow
+                  key={sortableIds[index]}
+                  entry={entry}
+                  index={index}
+                  sortedPlayers={availablePlayers}
+                  allowUnregistered={allowUnregistered}
+                  customName={customNames[entry.battingOrder] ?? ""}
+                  onPlayerSelect={handlePlayerSelect}
+                  onCustomNameChange={handleCustomNameChange}
+                  onDirectNameChange={handleDirectNameChange}
+                  isUnregistered={isUnregisteredSelected(entry)}
+                />
+              );
+            })}
           </SortableContext>
         </DndContext>
       </CardContent>

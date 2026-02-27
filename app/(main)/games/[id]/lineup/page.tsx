@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   saveLineupAction,
-  startGameAction,
   updateGameDhAction,
 } from "@/app/(main)/games/actions";
 import {
@@ -22,7 +21,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,9 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { FieldPositionSelector } from "@/components/field/FieldPositionSelector";
-import { ArrowLeft, ChevronDown, List, Loader2, Map, Pencil, Play, Save } from "lucide-react";
+import { ArrowLeft, ChevronLeft, Loader2, Pencil, Save, SkipForward } from "lucide-react";
 
 interface Player {
   id: string;
@@ -99,11 +95,8 @@ export default function LineupPage() {
   } | null>(null);
   const [myDhPitcherIsUnregistered, setMyDhPitcherIsUnregistered] =
     useState(false);
-  const [showOpponentLineup, setShowOpponentLineup] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "field">("list");
+  const [step, setStep] = useState<"my-team" | "opponent">("my-team");
   const [saving, setSaving] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +142,6 @@ export default function LineupPage() {
       if (existingLineups && existingLineups.length > 0) {
         const home = createEmptyLineup(useDh);
         const visitor = createEmptyLineup(useDh);
-        let hasOpponentData = false;
 
         // Separate DH pitcher entries (position=投 sharing batting_order with a DH entry)
         const homePitcherEntries: typeof existingLineups = [];
@@ -185,13 +177,6 @@ export default function LineupPage() {
               position: l.position ?? defaultPositions[idx],
             };
           }
-          // Check if opponent has real data (not just placeholder names)
-          const isOpponentSide = normalizedGame.is_home
-            ? l.team_side === "visitor"
-            : l.team_side === "home";
-          if (isOpponentSide && l.player_name && !l.player_name.startsWith("相手選手")) {
-            hasOpponentData = true;
-          }
         }
 
         // Restore DH pitcher state
@@ -211,10 +196,6 @@ export default function LineupPage() {
 
         setHomeLineup(home);
         setVisitorLineup(visitor);
-        if (hasOpponentData) {
-          setShowOpponentLineup(true);
-        }
-        setSaved(true);
       } else {
         // No existing data — initialize empty lineups
         setHomeLineup(createEmptyLineup(useDh));
@@ -238,21 +219,6 @@ export default function LineupPage() {
   }, [isDirty]);
 
   const markDirty = useCallback(() => setIsDirty(true), []);
-
-  const handlePositionSwap = useCallback(
-    (posA: string, posB: string) => {
-      const setLineup = game?.is_home ? setHomeLineup : setVisitorLineup;
-      setLineup((prev) =>
-        prev.map((entry) => {
-          if (entry.position === posA) return { ...entry, position: posB };
-          if (entry.position === posB) return { ...entry, position: posA };
-          return entry;
-        })
-      );
-      markDirty();
-    },
-    [game?.is_home, markDirty]
-  );
 
   const handleDhToggle = async (newUseDh: boolean) => {
     if (!game || game.use_dh === newUseDh) return;
@@ -289,11 +255,10 @@ export default function LineupPage() {
       setOpponentDhPitcher(null);
     }
 
-    setSaved(false);
     setIsDirty(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (skipOpponent = false) => {
     if (!game) return;
     setSaving(true);
     setError(null);
@@ -315,9 +280,10 @@ export default function LineupPage() {
       return;
     }
 
-    // If opponent lineup is hidden, use empty lineup with placeholder names
+    // If opponent lineup was skipped, use empty lineup with placeholder names
     // Free mode always uses the real opponent lineup
-    const actualOpponentLineup = (showOpponentLineup || game.is_free_mode)
+    const opponentEntered = !skipOpponent && (step === "opponent" || game.is_free_mode);
+    const actualOpponentLineup = opponentEntered
       ? opponentLineup
       : createEmptyLineup(game.use_dh);
 
@@ -327,7 +293,7 @@ export default function LineupPage() {
       playerName: e.playerName || `相手選手${e.battingOrder}`,
     }));
 
-    if ((showOpponentLineup || game.is_free_mode) && game.use_dh && !opponentDhPitcher?.playerName) {
+    if (opponentEntered && game.use_dh && !opponentDhPitcher?.playerName) {
       setError(`${opponentLabel}の先発投手を設定してください`);
       setSaving(false);
       return;
@@ -348,17 +314,17 @@ export default function LineupPage() {
           ? {
               homeDhPitcher: myDhPitcher ?? undefined,
               visitorDhPitcher:
-                showOpponentLineup && opponentDhPitcher
+                opponentEntered && opponentDhPitcher
                   ? opponentDhPitcher
-                  : showOpponentLineup
+                  : opponentEntered
                     ? undefined
                     : { playerId: null, playerName: `相手投手` },
             }
           : {
               homeDhPitcher:
-                showOpponentLineup && opponentDhPitcher
+                opponentEntered && opponentDhPitcher
                   ? opponentDhPitcher
-                  : showOpponentLineup
+                  : opponentEntered
                     ? undefined
                     : { playerId: null, playerName: `相手投手` },
               visitorDhPitcher: myDhPitcher ?? undefined,
@@ -366,29 +332,13 @@ export default function LineupPage() {
         : {}),
     });
 
-    setSaving(false);
-
     if (result.error) {
+      setSaving(false);
       setError(result.error);
       return;
     }
 
-    setSaved(true);
     setIsDirty(false);
-  };
-
-  const handleStart = async () => {
-    setStarting(true);
-    setError(null);
-
-    const result = await startGameAction(gameId);
-    setStarting(false);
-
-    if (result.error) {
-      setError(result.error);
-      return;
-    }
-
     router.push(`/games/${gameId}/input`);
   };
 
@@ -433,17 +383,58 @@ export default function LineupPage() {
     }
   };
 
+  // Validate my team lineup before proceeding to next step
+  const handleNext = () => {
+    setError(null);
+
+    const myMissingPlayers = myTeamLineup.filter(
+      (e) => !e.playerId && !e.playerName
+    );
+    if (myMissingPlayers.length > 0) {
+      const orders = myMissingPlayers.map((e) => e.battingOrder).join(", ");
+      setError(`${myTeamLabel}の ${orders} 番打者が未設定です`);
+      return;
+    }
+
+    if (game.use_dh && !myDhPitcher?.playerName) {
+      setError(`${myTeamLabel}の先発投手を設定してください`);
+      return;
+    }
+
+    setStep("opponent");
+  };
+
+  // Filter DH pitcher dropdown: exclude players already in my lineup
+  const myLineupPlayerIds = new Set(
+    myTeamLineup.map((e) => e.playerId).filter(Boolean)
+  );
+  const availablePitchers = sortedPlayers.filter(
+    (p) =>
+      p.id === myDhPitcher?.playerId || !myLineupPlayerIds.has(p.id)
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={handleNavBack}
-          className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          トップに戻る
-        </button>
+        {step === "my-team" ? (
+          <button
+            type="button"
+            onClick={handleNavBack}
+            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            トップに戻る
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setStep("my-team"); setError(null); }}
+            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            {myTeamLabel}に戻る
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -478,126 +469,123 @@ export default function LineupPage() {
       </AlertDialog>
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">オーダー登録</h1>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">DH制</span>
-          <div className="flex gap-1">
-            <Button
-              type="button"
-              variant={!game.use_dh ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleDhToggle(false)}
-            >
-              なし
-            </Button>
-            <Button
-              type="button"
-              variant={game.use_dh ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleDhToggle(true)}
-            >
-              あり
-            </Button>
+        <h1 className="text-2xl font-bold">
+          {step === "my-team"
+            ? `オーダー登録 - ${myTeamLabel}`
+            : `オーダー登録 - ${opponentLabel}`}
+        </h1>
+        {step === "my-team" && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">DH制</span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant={!game.use_dh ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleDhToggle(false)}
+              >
+                なし
+              </Button>
+              <Button
+                type="button"
+                variant={game.use_dh ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleDhToggle(true)}
+              >
+                あり
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      <div className="flex justify-end">
-        <ToggleGroup
-          type="single"
-          value={viewMode}
-          onValueChange={(v) => { if (v) setViewMode(v as "list" | "field"); }}
-        >
-          <ToggleGroupItem value="list" aria-label="リスト表示">
-            <List className="h-4 w-4 mr-1" />
-            リスト
-          </ToggleGroupItem>
-          <ToggleGroupItem value="field" aria-label="フィールド表示">
-            <Map className="h-4 w-4 mr-1" />
-            フィールド
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      {/* Step 1: My team lineup */}
+      {step === "my-team" && (
+        <>
+          <LineupEditor
+            title={myTeamLabel}
+            players={game.is_free_mode ? [] : players}
+            lineup={myTeamLineup}
+            onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
+            allowUnregistered
+          />
 
-      {viewMode === "field" ? (
-        <FieldPositionSelector
-          lineup={myTeamLineup}
-          useDh={game.use_dh}
-          onPositionSwap={handlePositionSwap}
-        />
-      ) : (
-        <LineupEditor
-          title={myTeamLabel}
-          players={game.is_free_mode ? [] : players}
-          lineup={myTeamLineup}
-          onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
-          allowUnregistered
-        />
-      )}
-
-      {game.use_dh && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">先発投手</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Select
-              value={
-                myDhPitcherIsUnregistered
-                  ? UNREGISTERED_PITCHER
-                  : myDhPitcher?.playerId ?? ""
-              }
-              onValueChange={(v) => {
-                if (v === UNREGISTERED_PITCHER) {
-                  setMyDhPitcherIsUnregistered(true);
-                  setMyDhPitcher({ playerId: null, playerName: "" });
-                } else {
-                  setMyDhPitcherIsUnregistered(false);
-                  const p = sortedPlayers.find((pl) => pl.id === v);
-                  if (p) {
-                    setMyDhPitcher({ playerId: p.id, playerName: p.name });
+          {game.use_dh && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">先発投手</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Select
+                  value={
+                    myDhPitcherIsUnregistered
+                      ? UNREGISTERED_PITCHER
+                      : myDhPitcher?.playerId ?? ""
                   }
-                }
-                markDirty();
-              }}
-            >
-              <SelectTrigger className="text-base h-12">
-                <SelectValue placeholder="投手を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {sortedPlayers.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-base">
-                    {p.number ? `#${p.number} ` : ""}
-                    {p.name}
-                  </SelectItem>
-                ))}
-                <SelectItem
-                  value={UNREGISTERED_PITCHER}
-                  className="text-base"
+                  onValueChange={(v) => {
+                    if (v === UNREGISTERED_PITCHER) {
+                      setMyDhPitcherIsUnregistered(true);
+                      setMyDhPitcher({ playerId: null, playerName: "" });
+                    } else {
+                      setMyDhPitcherIsUnregistered(false);
+                      const p = sortedPlayers.find((pl) => pl.id === v);
+                      if (p) {
+                        setMyDhPitcher({ playerId: p.id, playerName: p.name });
+                      }
+                    }
+                    markDirty();
+                  }}
                 >
-                  未登録選手
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {myDhPitcherIsUnregistered && (
-              <Input
-                value={myDhPitcher?.playerName ?? ""}
-                onChange={(e) => {
-                  setMyDhPitcher({
-                    playerId: null,
-                    playerName: e.target.value,
-                  });
-                  markDirty();
-                }}
-                placeholder="投手名を入力"
-                className="text-base h-10"
-              />
-            )}
-          </CardContent>
-        </Card>
+                  <SelectTrigger className="text-base h-12">
+                    <SelectValue placeholder="投手を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePitchers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-base">
+                        {p.number ? `#${p.number} ` : ""}
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem
+                      value={UNREGISTERED_PITCHER}
+                      className="text-base"
+                    >
+                      未登録選手
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {myDhPitcherIsUnregistered && (
+                  <Input
+                    value={myDhPitcher?.playerName ?? ""}
+                    onChange={(e) => {
+                      setMyDhPitcher({
+                        playerId: null,
+                        playerName: e.target.value,
+                      });
+                      markDirty();
+                    }}
+                    placeholder="投手名を入力"
+                    className="text-base h-10"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {error && <p className="text-destructive text-sm">{error}</p>}
+
+          <Button
+            size="lg"
+            className="w-full min-h-16 text-lg"
+            onClick={handleNext}
+          >
+            次へ — {opponentLabel}のオーダー入力
+          </Button>
+        </>
       )}
 
-      {(showOpponentLineup || game.is_free_mode) ? (
+      {/* Step 2: Opponent lineup */}
+      {step === "opponent" && (
         <>
           <LineupEditor
             title={opponentLabel}
@@ -605,6 +593,7 @@ export default function LineupPage() {
             onChange={(v) => { setOpponentLineup(v); markDirty(); }}
             allowUnregistered={game.is_free_mode}
           />
+
           {game.use_dh && (
             <Card>
               <CardHeader className="pb-2">
@@ -628,69 +617,42 @@ export default function LineupPage() {
               </CardContent>
             </Card>
           )}
+
+          {error && <p className="text-destructive text-sm">{error}</p>}
+
+          <div className="flex gap-3">
+            <Button
+              size="lg"
+              variant="outline"
+              className="flex-1 min-h-16 text-lg"
+              onClick={() => handleSave(true)}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <SkipForward className="mr-2 h-5 w-5" />
+              )}
+              スキップして保存
+            </Button>
+
+            <Button
+              size="lg"
+              className="flex-1 min-h-16 text-lg"
+              onClick={() => handleSave(false)}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-5 w-5" />
+              )}
+              オーダーを保存
+            </Button>
+          </div>
+
         </>
-      ) : (
-        <Button
-          variant="outline"
-          className="w-full min-h-12 text-base"
-          onClick={() => { setShowOpponentLineup(true); markDirty(); }}
-        >
-          <ChevronDown className="mr-2 h-4 w-4" />
-          {opponentLabel}のオーダーを入力する
-        </Button>
       )}
-
-      {error && <p className="text-destructive text-sm">{error}</p>}
-
-      <div className="flex gap-3">
-        <Button
-          size="lg"
-          className="flex-1 min-h-16 text-lg"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-5 w-5" />
-          )}
-          オーダーを保存
-        </Button>
-
-        {saved && game.status === "scheduled" && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="lg"
-                variant="default"
-                className="flex-1 min-h-16 text-lg bg-green-600 hover:bg-green-700"
-                disabled={starting}
-              >
-                {starting ? (
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                ) : (
-                  <Play className="mr-2 h-5 w-5" />
-                )}
-                記録を開始する
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>試合を開始しますか？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  試合ステータスが「試合中」に変更されます。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction onClick={handleStart}>
-                  開始する
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </div>
     </div>
   );
 }

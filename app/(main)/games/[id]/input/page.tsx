@@ -8,14 +8,14 @@ import { useGameSession } from "@/hooks/useGameSession";
 import { recordAtBatAction, changePitcherAction, finishGameAction, recordStealAction, substitutePlayerAction, changePositionAction, undoLastAtBatAction, recordRunnerAdvanceAction } from "@/app/(main)/games/actions";
 import { GameActionButtons } from "@/components/game/GameActionButtons";
 import { LineupTable, type LineupRow } from "@/components/game/LineupTable";
-import { ScoreBoard } from "@/components/game/ScoreBoard";
-import { OutCount } from "@/components/game/OutCount";
 import { FieldRunnerDisplay } from "@/components/field/FieldRunnerDisplay";
+import { RunnerDestinationDiamond } from "@/components/field/RunnerDestinationDiamond";
 import { AtBatInput } from "@/components/game/AtBatInput";
-import { PitchCounter, countFromLog, type PitchResult } from "@/components/game/PitchCounter";
+import { countFromLog, type PitchResult } from "@/components/game/PitchCounter";
 import { InputLockBanner } from "@/components/game/InputLockBanner";
 import { SessionRequestModal } from "@/components/game/SessionRequestModal";
 import { createClient } from "@/lib/supabase/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +35,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,19 +48,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, ClipboardEdit, Loader2, RefreshCw, Undo2 } from "lucide-react";
-
-// ---- Runner destination types ----
-
-type RunnerDest = "1st" | "2nd" | "3rd" | "scored" | "out" | "stay";
-
-interface RunnerRow {
-  lineupId: string;
-  playerName: string;
-  fromBase: "batter" | "1st" | "2nd" | "3rd";
-  destination: RunnerDest;
-}
+import { ArrowLeft, Check, ChevronDown, ClipboardEdit, Loader2, RefreshCw, Undo2 } from "lucide-react";
+import type { RunnerDest, RunnerRow } from "./types";
 
 // ---- Default runner destinations per result ----
 
@@ -68,6 +63,9 @@ function getDefaultDestinations(
   if (runners.third) {
     let dest: RunnerDest = "stay";
     if (["1B", "2B", "3B", "HR", "SH", "SF"].includes(result)) dest = "scored";
+    // BB/IBB/HBP: forced if 1st AND 2nd are occupied
+    else if (["BB", "IBB", "HBP"].includes(result) && runners.first && runners.second)
+      dest = "scored";
     rows.push({
       lineupId: runners.third.id,
       playerName: runners.third.player_name ?? "—",
@@ -83,6 +81,8 @@ function getDefaultDestinations(
     else if (result === "1B") dest = "3rd";
     else if (result === "SH") dest = "3rd";
     else if (result === "DP") dest = "stay";
+    // BB/IBB/HBP: forced if 1st is occupied
+    else if (["BB", "IBB", "HBP"].includes(result) && runners.first) dest = "3rd";
     rows.push({
       lineupId: runners.second.id,
       playerName: runners.second.player_name ?? "—",
@@ -120,6 +120,38 @@ function getDefaultBatterDest(result: string): RunnerDest {
   return "out";
 }
 
+function isRunnerForced(
+  fromBase: "1st" | "2nd" | "3rd",
+  result: string,
+  runners: BaseRunners
+): boolean {
+  // HR: all runners forced
+  if (result === "HR") return true;
+
+  // Batter goes to 1st: BB/IBB/HBP/1B/E/FC
+  if (["BB", "IBB", "HBP", "1B", "E", "FC"].includes(result)) {
+    if (fromBase === "1st") return true;
+    if (fromBase === "2nd") return !!runners.first;
+    if (fromBase === "3rd") return !!runners.first && !!runners.second;
+  }
+
+  // Batter goes to 2nd: 2B
+  if (result === "2B") {
+    if (fromBase === "2nd") return true;
+    if (fromBase === "3rd") return !!runners.second;
+    // 1st base runner is not forced by a double
+  }
+
+  // Batter goes to 3rd: 3B
+  if (result === "3B") {
+    if (fromBase === "3rd") return true;
+    // 1st/2nd base runners are not forced by a triple
+  }
+
+  // Out results (K/KK/GO/FO/LO/DP/SF/SH): batter doesn't occupy a base
+  return false;
+}
+
 function computeRbi(
   result: string,
   batterDest: RunnerDest,
@@ -139,16 +171,57 @@ function computeRbi(
   return total;
 }
 
-// ---- Destination options ----
+// ---- Destination options (filtered by runner position) ----
 
-const DEST_OPTIONS: { value: RunnerDest; label: string }[] = [
-  { value: "stay", label: "そのまま" },
-  { value: "1st", label: "→1塁" },
-  { value: "2nd", label: "→2塁" },
-  { value: "3rd", label: "→3塁" },
-  { value: "scored", label: "得点" },
-  { value: "out", label: "アウト" },
-];
+function getDestOptionsForBase(
+  fromBase: "batter" | "1st" | "2nd" | "3rd",
+  opts?: { forceAdvance?: boolean }
+): { value: RunnerDest; label: string }[] {
+  const forceAdvance = opts?.forceAdvance ?? false;
+
+  let options: { value: RunnerDest; label: string }[];
+  switch (fromBase) {
+    case "3rd":
+      options = [
+        { value: "stay", label: "そのまま" },
+        { value: "scored", label: "得点" },
+        { value: "out", label: "OUT" },
+      ];
+      break;
+    case "2nd":
+      options = [
+        { value: "stay", label: "そのまま" },
+        { value: "3rd", label: "→3塁" },
+        { value: "scored", label: "得点" },
+        { value: "out", label: "OUT" },
+      ];
+      break;
+    case "1st":
+      options = [
+        { value: "stay", label: "そのまま" },
+        { value: "2nd", label: "→2塁" },
+        { value: "3rd", label: "→3塁" },
+        { value: "scored", label: "得点" },
+        { value: "out", label: "OUT" },
+      ];
+      break;
+    case "batter":
+      options = [
+        { value: "1st", label: "→1塁" },
+        { value: "2nd", label: "→2塁" },
+        { value: "3rd", label: "→3塁" },
+        { value: "scored", label: "得点" },
+        { value: "out", label: "OUT" },
+      ];
+      break;
+  }
+
+  if (forceAdvance) {
+    options = options.filter((o) => o.value !== "stay");
+  }
+
+  return options;
+}
 
 // ---- Main page ----
 
@@ -179,7 +252,6 @@ export default function GameInputPage() {
   const [runnerDialogOpen, setRunnerDialogOpen] = useState(false);
   const [runnerRows, setRunnerRows] = useState<RunnerRow[]>([]);
   const [batterDest, setBatterDest] = useState<RunnerDest>("1st");
-  const [rbiOverride, setRbiOverride] = useState<number>(0);
   const [saving, setSaving] = useState(false);
 
   // Change of innings dialog
@@ -195,6 +267,7 @@ export default function GameInputPage() {
 
   // Finish game dialog
   const [showFinishGame, setShowFinishGame] = useState(false);
+  const [showInPlayDialog, setShowInPlayDialog] = useState(false);
 
   // Steal dialog state
   const [showStealDialog, setShowStealDialog] = useState(false);
@@ -219,6 +292,12 @@ export default function GameInputPage() {
   }>>({}); // lineupId → substitute player info
   const [posSubManualInput, setPosSubManualInput] = useState<Set<string>>(new Set()); // lineupIds using manual text input
   const [posChangeSaving, setPosChangeSaving] = useState(false);
+
+  // Auto-save banner state
+  const [autoSaveBanner, setAutoSaveBanner] = useState<{
+    playerName: string;
+    resultLabel: string;
+  } | null>(null);
 
   // Track last result code between confirm and save
   const lastResultCode = useRef("");
@@ -289,6 +368,9 @@ export default function GameInputPage() {
     (l) => l.batting_order === gameState.currentBatterOrder
   );
 
+  // Auto-computed RBI from current runner/batter destinations
+  const computedRbi = computeRbi(lastResultCode.current, batterDest, runnerRows);
+
   // Fielding team lineup — latest entry per batting_order
   const fieldingLineup = useMemo(() => {
     const lineups = gameState.lineups.filter((l) => l.team_side === fieldingTeamSide);
@@ -340,6 +422,116 @@ export default function GameInputPage() {
     return null;
   }, [pitchCounts, pitchLog]);
 
+  // Auto-dismiss banner after 5 seconds
+  useEffect(() => {
+    if (!autoSaveBanner) return;
+    const timer = setTimeout(() => setAutoSaveBanner(null), 5000);
+    return () => clearTimeout(timer);
+  }, [autoSaveBanner]);
+
+  // ---- Auto-save (no runners, deterministic result) ----
+
+  const autoSaveAtBat = useCallback(
+    async (code: string, label: string, bDest: RunnerDest) => {
+      if (!currentBatter || !gameState.game) return;
+
+      setSaving(true);
+      setActionError(null);
+
+      const baseRunnersBefore: { base: string; lineupId: string }[] = [];
+
+      const destinations: { lineupId: string; event: "scored" | "out"; toBase: undefined }[] = [];
+      if (bDest === "scored" || bDest === "out") {
+        destinations.push({ lineupId: currentBatter.id, event: bDest, toBase: undefined });
+      }
+
+      const runnersAfter: { base: string; lineupId: string }[] = [];
+      if (["1st", "2nd", "3rd"].includes(bDest)) {
+        runnersAfter.push({ base: bDest, lineupId: currentBatter.id });
+      }
+
+      const rbi = computeRbi(code, bDest, []);
+
+      const result = await recordAtBatAction({
+        gameId,
+        inning: gameState.currentInning,
+        inningHalf: gameState.currentHalf,
+        battingOrder: gameState.currentBatterOrder,
+        lineupId: currentBatter.id,
+        result: code,
+        rbi,
+        pitchCount: pitchLog.length,
+        pitches: pitchLog,
+        baseRunnersBefore,
+        runnerDestinations: destinations,
+        runnersAfter,
+      });
+
+      setSaving(false);
+
+      if (result.error) {
+        setActionError(result.error);
+        return;
+      }
+
+      setAutoSaveBanner({
+        playerName: currentBatter.player_name ?? "—",
+        resultLabel: label,
+      });
+
+      setPendingResult(null);
+      setPitchLog([]);
+      syncPitchLogToDb([]);
+
+      const outsFromResult = countOutsFromResult(code, bDest, []);
+      const totalOuts = gameState.currentOuts + outsFromResult;
+
+      if (totalOuts >= 3) {
+        let nextHalf: "top" | "bottom";
+        let nextInning: number;
+        if (gameState.currentHalf === "top") {
+          nextHalf = "bottom";
+          nextInning = gameState.currentInning;
+        } else {
+          nextHalf = "top";
+          nextInning = gameState.currentInning + 1;
+        }
+        setNextInningInfo({ inning: nextInning, half: nextHalf });
+        setShowInningChange(true);
+      } else {
+        await gameState.reload();
+      }
+    },
+    [currentBatter, gameState, gameId, pitchLog, syncPitchLogToDb]
+  );
+
+  // ---- Process result: auto-save or open runner dialog ----
+
+  const processResult = useCallback(
+    (code: string, label: string) => {
+      if (!currentBatter) return;
+
+      lastResultCode.current = code;
+      const defaults = getDefaultDestinations(code, gameState.baseRunners);
+      const bDest = getDefaultBatterDest(code);
+
+      // No runners → auto-save (skip runner dialog)
+      if (defaults.length === 0) {
+        autoSaveAtBat(code, label, bDest);
+        return;
+      }
+
+      // Has runners → open runner dialog directly (no confirm step)
+      setPendingResult({ code, label }); // keep for display in dialog header
+      setRunnerRows(defaults);
+      setBatterDest(bDest);
+      setRunnerDialogOpen(true);
+    },
+    [currentBatter, gameState.baseRunners, autoSaveAtBat]
+  );
+
+  // ---- Handlers ----
+
   const handlePitch = useCallback((result: PitchResult) => {
     const newLog = [...pitchLog, result];
     setPitchLog(newLog);
@@ -348,17 +540,17 @@ export default function GameInputPage() {
     // Auto-result: check if count is full after this pitch
     const counts = countFromLog(newLog);
     if (counts.balls >= 4) {
-      setPendingResult({ code: "BB", label: "四球" });
       setActionError(null);
+      processResult("BB", "四球");
     } else if (counts.strikes >= 3) {
-      if (result === "looking") {
-        setPendingResult({ code: "KK", label: "三振(見)" });
-      } else {
-        setPendingResult({ code: "K", label: "三振(空)" });
-      }
       setActionError(null);
+      if (result === "looking") {
+        processResult("KK", "三振(見)");
+      } else {
+        processResult("K", "三振(空)");
+      }
     }
-  }, [pitchLog, syncPitchLogToDb]);
+  }, [pitchLog, syncPitchLogToDb, processResult]);
 
   const handleUndoPitch = useCallback(() => {
     setPitchLog((prev) => {
@@ -368,54 +560,31 @@ export default function GameInputPage() {
     });
   }, [syncPitchLogToDb]);
 
-  // ---- Handlers ----
-
   const handleResultSelect = useCallback(
     (code: string, label: string) => {
-      setPendingResult({ code, label });
+      setShowInPlayDialog(false);
       setActionError(null);
+      processResult(code, label);
     },
-    []
+    [processResult]
   );
-
-  const handleConfirmResult = useCallback(() => {
-    if (!pendingResult || !currentBatter) return;
-
-    const code = pendingResult.code;
-    lastResultCode.current = code;
-    const defaults = getDefaultDestinations(code, gameState.baseRunners);
-    const bDest = getDefaultBatterDest(code);
-
-    setRunnerRows(defaults);
-    setBatterDest(bDest);
-    setRbiOverride(computeRbi(code, bDest, defaults));
-    setPendingResult(null);
-    setRunnerDialogOpen(true);
-  }, [pendingResult, currentBatter, gameState.baseRunners]);
 
   const handleRunnerDestChange = useCallback(
     (lineupId: string, dest: RunnerDest) => {
-      setRunnerRows((prev) => {
-        const updated = prev.map((r) =>
+      setRunnerRows((prev) =>
+        prev.map((r) =>
           r.lineupId === lineupId ? { ...r, destination: dest } : r
-        );
-        // Recalculate RBI
-        const code = lastResultCode.current;
-        if (code) {
-          setRbiOverride(computeRbi(code, batterDest, updated));
-        }
-        return updated;
-      });
+        )
+      );
     },
-    [batterDest]
+    []
   );
 
   const handleBatterDestChange = useCallback(
     (dest: RunnerDest) => {
       setBatterDest(dest);
-      setRbiOverride(computeRbi(lastResultCode.current, dest, runnerRows));
     },
-    [runnerRows]
+    []
   );
 
   const handleSaveAtBat = useCallback(async () => {
@@ -466,7 +635,7 @@ export default function GameInputPage() {
       battingOrder: gameState.currentBatterOrder,
       lineupId: currentBatter.id,
       result: resultCode,
-      rbi: rbiOverride,
+      rbi: computedRbi,
       pitchCount: pitchLog.length,
       pitches: pitchLog,
       baseRunnersBefore,
@@ -482,6 +651,7 @@ export default function GameInputPage() {
     }
 
     setRunnerDialogOpen(false);
+    setPendingResult(null);
     setPitchLog([]);
     syncPitchLogToDb([]);
 
@@ -511,7 +681,7 @@ export default function GameInputPage() {
     gameId,
     runnerRows,
     batterDest,
-    rbiOverride,
+    computedRbi,
     pitchLog,
     syncPitchLogToDb,
   ]);
@@ -976,8 +1146,15 @@ export default function GameInputPage() {
     ? `${numberPrefix}${currentBatter.player_name ?? "—"}（${gameState.currentBatterOrder}番・${positionLabel}）`
     : "—";
 
+  const halfLabel = gameState.currentHalf === "top" ? "表" : "裏";
+  const myScore = gameState.game.is_home ? gameState.score.home : gameState.score.visitor;
+  const opponentScore = gameState.game.is_home ? gameState.score.visitor : gameState.score.home;
+  const { balls, strikes, fouls } = pitchCounts;
+  const countFull = balls >= 4 || strikes >= 3;
+  const hasRunners = !!(gameState.baseRunners.first || gameState.baseRunners.second || gameState.baseRunners.third);
+
   return (
-    <div className="space-y-4 pb-8">
+    <div className="flex flex-col gap-3 pb-4">
       {/* Session request modal (shown to current holder) */}
       {session.pendingRequest && (
         <SessionRequestModal
@@ -989,113 +1166,182 @@ export default function GameInputPage() {
         />
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => router.push(`/games/${gameId}`)}
-          className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          試合詳細
-        </button>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setShowUndoConfirm(true);
-              setActionError(null);
-            }}
-          >
-            <Undo2 className="mr-1 h-4 w-4" />
-            戻す
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => gameState.reload()}
-          >
-            <RefreshCw className="mr-1 h-4 w-4" />
-            更新
-          </Button>
+      {/* ── Compact info bar ── */}
+      <div className="flex items-center justify-between bg-muted rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 font-bold">
+          <span className="text-sm">{gameState.myTeamName}</span>
+          <span className="text-xl tabular-nums">{myScore} - {opponentScore}</span>
+          <span className="text-sm">{gameState.game.opponent_name}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium">{gameState.currentInning}回{halfLabel}</span>
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className={`w-4 h-4 rounded-full border-2 ${
+                  i < gameState.currentOuts
+                    ? "bg-foreground border-foreground"
+                    : "bg-transparent border-muted-foreground"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Scoreboard */}
-      <ScoreBoard
-        myTeamName={gameState.myTeamName}
-        opponentName={gameState.game.opponent_name}
-        isHome={gameState.game.is_home}
-        score={gameState.score}
-        currentInning={gameState.currentInning}
-        currentHalf={gameState.currentHalf}
-      />
+      {/* ── Auto-save banner ── */}
+      {autoSaveBanner && (
+        <div className="flex items-center justify-between bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+          <span className="text-sm font-medium text-green-800 dark:text-green-200 flex items-center gap-1">
+            <Check className="h-4 w-4" />
+            {autoSaveBanner.playerName} → {autoSaveBanner.resultLabel} を記録
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-green-800 dark:text-green-200 hover:text-green-900 dark:hover:text-green-100"
+            onClick={() => {
+              setAutoSaveBanner(null);
+              handleUndo();
+            }}
+          >
+            取消
+          </Button>
+        </div>
+      )}
 
-      {/* Outs + Runners */}
-      <div className="flex items-center gap-4">
-        <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-32 h-32 shrink-0" />
-        <OutCount outs={gameState.currentOuts} />
+      {/* ── Diamond + BSF count + Batter ── */}
+      <div className="flex items-start gap-4 px-1">
+        {/* Diamond */}
+        <div className="shrink-0">
+          <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-28 h-28" />
+          <p className="text-sm font-bold text-center mt-1 truncate max-w-28">
+            {batterDisplay}
+          </p>
+        </div>
+
+        {/* BSF count (vertical) */}
+        <div className="flex-1 space-y-1.5 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold w-5">B</span>
+            <div className="flex gap-1.5">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className={`w-6 h-6 rounded-full ${
+                    i < balls ? "bg-green-500" : "bg-muted border border-border"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold w-5">S</span>
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className={`w-6 h-6 rounded-full ${
+                    i < strikes ? "bg-yellow-500" : "bg-muted border border-border"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-base font-bold w-5">F</span>
+            <Badge variant="secondary" className="tabular-nums">{fouls}</Badge>
+            <Badge variant="outline" className="ml-auto tabular-nums">{pitchLog.length}球</Badge>
+          </div>
+        </div>
       </div>
 
-      {/* Current batter */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">打者</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-lg font-bold">{batterDisplay}</p>
-        </CardContent>
-      </Card>
+      {/* ── Runner action trigger ── */}
+      <Button
+        variant="outline"
+        size="default"
+        className="w-full"
+        disabled={!hasRunners}
+        onClick={() => {
+          // Open a runner operations menu via steal dialog by default
+          setShowStealDialog(true);
+          setStealLineupId("");
+          setActionError(null);
+        }}
+      >
+        盗塁 / 進塁 / アウト
+      </Button>
 
-      {/* Pitch counter */}
-      <PitchCounter
-        pitchLog={pitchLog}
-        onPitch={handlePitch}
-        onUndo={handleUndoPitch}
-        disabled={saving}
-      />
+      {/* ── Pitch buttons (row 1) ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <Button
+          size="lg"
+          variant="outline"
+          className="min-h-14 text-base"
+          disabled={saving || countFull}
+          onClick={() => handlePitch("ball")}
+        >
+          ボール
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="min-h-14 text-base"
+          disabled={saving || countFull}
+          onClick={() => handlePitch("looking")}
+        >
+          見逃し
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="min-h-14 text-base"
+          disabled={saving || countFull}
+          onClick={() => handlePitch("swinging")}
+        >
+          空振り
+        </Button>
+      </div>
 
-      {/* At-bat result buttons */}
-      <AtBatInput onSelect={handleResultSelect} disabled={saving} highlightCode={highlightCode} />
+      {/* ── Pitch buttons (row 2): Foul + In Play ── */}
+      <div className="grid grid-cols-5 gap-2">
+        <Button
+          size="lg"
+          variant="outline"
+          className="col-span-2 min-h-14 text-base"
+          disabled={saving || countFull}
+          onClick={() => handlePitch("foul")}
+        >
+          ファウル
+        </Button>
+        <Button
+          size="lg"
+          variant="default"
+          className="col-span-3 min-h-14 text-base font-bold"
+          disabled={saving}
+          onClick={() => setShowInPlayDialog(true)}
+        >
+          ★ インプレイ
+        </Button>
+      </div>
 
-      {/* Action buttons */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* ── Utility row ── */}
+      <div className="grid grid-cols-4 gap-2 border-t pt-3">
         <Button
           variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
-          disabled={stealRunnerOptions.length === 0}
-          onClick={() => {
-            setShowStealDialog(true);
-            setStealLineupId("");
-            setActionError(null);
-          }}
+          size="default"
+          className="text-sm"
+          disabled={pitchLog.length === 0}
+          onClick={handleUndoPitch}
         >
-          盗塁
+          <Undo2 className="mr-1 h-4 w-4" />
+          戻す
         </Button>
         <Button
           variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
-          disabled={advanceRunnerOptions.length === 0}
-          onClick={() => {
-            setAdvanceEventType("wild_pitch");
-            const init: Record<string, string> = {};
-            for (const r of advanceRunnerOptions) {
-              init[r.lineupId] = r.defaultToBase;
-            }
-            setAdvanceSelections(init);
-            setShowAdvanceDialog(true);
-            setActionError(null);
-          }}
-        >
-          WP/PB/BK
-        </Button>
-        <Button
-          variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
+          size="default"
+          className="text-sm"
           onClick={() => {
             setSubType("pinch_hitter");
             setSubNewPlayerId(null);
@@ -1106,48 +1352,86 @@ export default function GameInputPage() {
             setActionError(null);
           }}
         >
-          交代
+          選手交代
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="default" className="text-sm">
+              その他
+              <ChevronDown className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center">
+            <DropdownMenuItem
+              disabled={advanceRunnerOptions.length === 0}
+              onClick={() => {
+                setAdvanceEventType("wild_pitch");
+                const init: Record<string, string> = {};
+                for (const r of advanceRunnerOptions) {
+                  init[r.lineupId] = r.defaultToBase;
+                }
+                setAdvanceSelections(init);
+                setShowAdvanceDialog(true);
+                setActionError(null);
+              }}
+            >
+              WP / PB / BK
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                const init: Record<string, string> = {};
+                for (const l of fieldingLineup) {
+                  init[l.id] = l.position ?? "";
+                }
+                setPosChanges(init);
+                setPosSubstitutions({});
+                setPosSubManualInput(new Set());
+                setShowPosChangeDialog(true);
+                setActionError(null);
+              }}
+            >
+              守備変更
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setShowPitcherChange(true);
+                setActionError(null);
+              }}
+            >
+              投手交代
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setShowUndoConfirm(true);
+                setActionError(null);
+              }}
+            >
+              打席取消
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-muted-foreground"
+              onClick={() => {
+                setShowFinishGame(true);
+                setActionError(null);
+              }}
+            >
+              試合終了
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => router.push(`/games/${gameId}`)}
+            >
+              ← 試合詳細
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
-          onClick={() => {
-            // Init position changes with current positions
-            const init: Record<string, string> = {};
-            for (const l of fieldingLineup) {
-              init[l.id] = l.position ?? "";
-            }
-            setPosChanges(init);
-            setPosSubstitutions({});
-            setPosSubManualInput(new Set());
-            setShowPosChangeDialog(true);
-            setActionError(null);
-          }}
+          size="default"
+          className="text-sm"
+          onClick={() => gameState.reload()}
         >
-          守備変更
-        </Button>
-        <Button
-          variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
-          onClick={() => {
-            setShowPitcherChange(true);
-            setActionError(null);
-          }}
-        >
-          投手交代
-        </Button>
-        <Button
-          variant="outline"
-          size="lg"
-          className="min-h-14 text-base"
-          onClick={() => {
-            setShowFinishGame(true);
-            setActionError(null);
-          }}
-        >
-          試合終了
+          <RefreshCw className="mr-1 h-4 w-4" />
+          更新
         </Button>
       </div>
 
@@ -1155,115 +1439,77 @@ export default function GameInputPage() {
         <p className="text-destructive text-sm text-center">{actionError}</p>
       )}
 
-      {/* ---- Confirm result dialog ---- */}
-      <AlertDialog
-        open={pendingResult != null}
+      {/* ── In Play dialog (AtBatInput) ── */}
+      <Dialog open={showInPlayDialog} onOpenChange={setShowInPlayDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>打席結果を選択</DialogTitle>
+          </DialogHeader>
+          <AtBatInput onSelect={handleResultSelect} disabled={saving} highlightCode={highlightCode} />
+        </DialogContent>
+      </Dialog>
+
+      {/* ---- Runner / scoring dialog (also serves as confirmation) ---- */}
+      <Dialog
+        open={runnerDialogOpen}
         onOpenChange={(open) => {
+          setRunnerDialogOpen(open);
           if (!open) setPendingResult(null);
         }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>打席結果の確認</AlertDialogTitle>
-            <AlertDialogDescription>
-              {currentBatter?.player_name ?? "—"} → {pendingResult?.label}{" "}
-              でよいですか？
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmResult}>
-              確定
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* ---- Runner / scoring dialog ---- */}
-      <Dialog open={runnerDialogOpen} onOpenChange={setRunnerDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>走者・得点入力</DialogTitle>
           </DialogHeader>
+
+          {/* Result display */}
+          {pendingResult && (
+            <div className="bg-muted rounded-lg px-3 py-2 text-sm">
+              <span className="text-muted-foreground">打席結果: </span>
+              <span className="font-bold">{pendingResult.label}</span>
+            </div>
+          )}
+
           <div className="space-y-4">
-            {/* Runners */}
-            {runnerRows.map((row) => (
-              <div key={row.lineupId} className="space-y-1">
-                <label className="text-sm font-medium">
-                  {row.fromBase === "1st"
-                    ? "1塁"
-                    : row.fromBase === "2nd"
-                      ? "2塁"
-                      : "3塁"}
-                  走者: {row.playerName}
-                </label>
-                <Select
-                  value={row.destination}
-                  onValueChange={(v) =>
-                    handleRunnerDestChange(row.lineupId, v as RunnerDest)
-                  }
-                >
-                  <SelectTrigger className="h-12 text-base">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEST_OPTIONS.map((opt) => (
-                      <SelectItem
-                        key={opt.value}
-                        value={opt.value}
-                        className="text-base"
-                      >
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
+            {/* Diamond runner destination UI */}
+            <RunnerDestinationDiamond
+              runnerRows={runnerRows}
+              batter={{
+                lineupId: currentBatter?.id ?? "",
+                playerName: currentBatter?.player_name ?? "—",
+                destination: batterDest,
+              }}
+              getDestOptions={(fromBase) =>
+                getDestOptionsForBase(fromBase, {
+                  forceAdvance:
+                    fromBase !== "batter" &&
+                    isRunnerForced(fromBase as "1st" | "2nd" | "3rd", lastResultCode.current, gameState.baseRunners),
+                }).map((o) => o.value)
+              }
+              onRunnerDestChange={handleRunnerDestChange}
+              onBatterDestChange={handleBatterDestChange}
+              className="w-full max-w-[320px] mx-auto"
+            />
 
-            {/* Batter destination */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">
-                打者: {currentBatter?.player_name ?? "—"}
-              </label>
-              <Select
-                value={batterDest}
-                onValueChange={(v) => handleBatterDestChange(v as RunnerDest)}
-              >
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEST_OPTIONS.filter((o) => o.value !== "stay").map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      value={opt.value}
-                      className="text-base"
-                    >
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Legend */}
+            <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded-full bg-blue-600" /> 走者
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded-full bg-amber-600" /> 打者
+              </span>
+              <span>タップで選択→移動先をタップ</span>
             </div>
 
-            {/* RBI */}
-            <div className="space-y-1">
-              <label className="text-sm font-medium">打点</label>
-              <Input
-                type="number"
-                min={0}
-                max={9}
-                value={rbiOverride}
-                onChange={(e) => setRbiOverride(parseInt(e.target.value) || 0)}
-                className="h-12 text-base"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setRunnerDialogOpen(false)}
+              onClick={() => {
+                setRunnerDialogOpen(false);
+                setPendingResult(null);
+              }}
             >
               キャンセル
             </Button>

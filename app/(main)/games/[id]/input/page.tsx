@@ -1235,10 +1235,10 @@ export default function GameInputPage() {
       )}
 
       {/* ── Diamond + BSO count ── */}
-      <div className="flex items-start gap-4 px-1">
+      <div className="flex items-start gap-2 sm:gap-4 px-1">
         {/* Diamond */}
         <div className="shrink-0">
-          <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-24 h-24" />
+          <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-20 h-20 sm:w-24 sm:h-24" />
         </div>
 
         {/* BSO count (vertical) */}
@@ -1926,7 +1926,7 @@ export default function GameInputPage() {
               return (
                 <div key={l.id} className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm w-28 truncate">
+                    <span className="text-xs sm:text-sm w-20 sm:w-28 truncate shrink-0">
                       {l.batting_order}番 {l.player_name}
                     </span>
                     <Select

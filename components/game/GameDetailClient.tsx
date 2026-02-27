@@ -263,10 +263,10 @@ export function GameDetailClient({
       {/* Current situation */}
       <Card>
         <CardContent className="pt-4 space-y-3">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <FieldRunnerDisplay
               baseRunners={state.baseRunners}
-              className="w-32 h-32 shrink-0"
+              className="w-24 h-24 sm:w-32 sm:h-32 shrink-0"
             />
             <OutCount outs={state.currentOuts} />
           </div>

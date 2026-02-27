@@ -40,36 +40,36 @@ export function InningScoreTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
+      <table className="w-full text-xs sm:text-sm border-collapse">
         <thead>
           <tr className="border-b">
-            <th className="px-2 py-1.5 text-left font-medium">回</th>
+            <th className="px-1 sm:px-2 py-1.5 text-left font-medium sticky left-0 bg-background">回</th>
             {inningNumbers.map((n) => (
-              <th key={n} className="px-2 py-1.5 text-center font-medium w-9">
+              <th key={n} className="px-1 sm:px-2 py-1.5 text-center font-medium w-7 sm:w-9">
                 {n}
               </th>
             ))}
-            <th className="px-2 py-1.5 text-center font-bold w-9">計</th>
+            <th className="px-1 sm:px-2 py-1.5 text-center font-bold w-7 sm:w-9">計</th>
           </tr>
         </thead>
         <tbody>
           <tr className="border-b">
-            <td className="px-2 py-1.5 font-medium whitespace-nowrap">{topTeamName}</td>
+            <td className="px-1 sm:px-2 py-1.5 font-medium whitespace-nowrap sticky left-0 bg-background max-w-[5rem] sm:max-w-none truncate">{topTeamName}</td>
             {inningNumbers.map((n) => (
-              <td key={n} className="px-2 py-1.5 text-center tabular-nums">
+              <td key={n} className="px-1 sm:px-2 py-1.5 text-center tabular-nums">
                 {innings.get(n)?.top ?? ""}
               </td>
             ))}
-            <td className="px-2 py-1.5 text-center font-bold tabular-nums">{topTotal}</td>
+            <td className="px-1 sm:px-2 py-1.5 text-center font-bold tabular-nums">{topTotal}</td>
           </tr>
           <tr className="border-b">
-            <td className="px-2 py-1.5 font-medium whitespace-nowrap">{bottomTeamName}</td>
+            <td className="px-1 sm:px-2 py-1.5 font-medium whitespace-nowrap sticky left-0 bg-background max-w-[5rem] sm:max-w-none truncate">{bottomTeamName}</td>
             {inningNumbers.map((n) => (
-              <td key={n} className="px-2 py-1.5 text-center tabular-nums">
+              <td key={n} className="px-1 sm:px-2 py-1.5 text-center tabular-nums">
                 {innings.get(n)?.bottom ?? ""}
               </td>
             ))}
-            <td className="px-2 py-1.5 text-center font-bold tabular-nums">{bottomTotal}</td>
+            <td className="px-1 sm:px-2 py-1.5 text-center font-bold tabular-nums">{bottomTotal}</td>
           </tr>
         </tbody>
       </table>

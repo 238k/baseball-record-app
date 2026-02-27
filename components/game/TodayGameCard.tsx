@@ -46,11 +46,11 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-base sm:text-lg min-w-0 break-all">
             {title}
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {isFree && (
               <Badge variant="outline" className="text-xs">
                 フリー
@@ -88,13 +88,13 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
           <Link href={`/games/${game.id}/input`} prefetch={false} className="flex-1">
             <Button
               size="lg"
-              className="w-full min-h-14 text-lg"
+              className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"
               variant="outline"
             >
               {game.status === "scheduled" ? (
-                <><ClipboardEdit className="mr-2 h-5 w-5" />編集</>
+                <><ClipboardEdit className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />編集</>
               ) : (
-                <><Play className="mr-2 h-5 w-5" />記録</>
+                <><Play className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />記録</>
               )}
             </Button>
           </Link>
@@ -102,21 +102,21 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
             <Link href={`/games/${game.id}`} prefetch={false} className="flex-1">
               <Button
                 size="lg"
-                className="w-full min-h-14 text-lg"
+                className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"
                 variant="outline"
               >
-                <Eye className="mr-2 h-5 w-5" />
+                <Eye className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                 観戦
               </Button>
             </Link>
           ) : (
             <Button
               size="lg"
-              className="flex-1 min-h-14 text-lg"
+              className="flex-1 min-h-11 sm:min-h-14 text-base sm:text-lg"
               variant="outline"
               disabled
             >
-              <Eye className="mr-2 h-5 w-5" />
+              <Eye className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />
               観戦
             </Button>
           )}

@@ -43,7 +43,7 @@ export function JoinTeamDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="lg" variant="outline" className="min-h-16 text-lg">
+        <Button size="lg" variant="outline" className="min-h-12 sm:min-h-16 text-base sm:text-lg">
           <UserPlus className="mr-2 h-5 w-5" />
           チームに参加
         </Button>

@@ -64,10 +64,10 @@ export default async function TeamsPage({
           <p className="text-muted-foreground text-sm">
             チームを作成するか、招待コードでチームに参加してください
           </p>
-          <div className="flex gap-3 justify-center mt-6">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
             <JoinTeamDialog />
             <Link href="/team/new">
-              <Button size="lg" className="min-h-16 text-lg">
+              <Button size="lg" className="min-h-12 sm:min-h-16 text-base sm:text-lg">
                 <PlusCircle className="mr-2 h-5 w-5" />
                 チームを作成
               </Button>
@@ -137,12 +137,12 @@ export default async function TeamsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold">マイチーム</h1>
         <div className="flex gap-2">
           <JoinTeamDialog />
           <Link href="/team/new">
-            <Button size="lg" className="min-h-16 text-lg">
+            <Button size="lg" className="min-h-12 sm:min-h-16 text-base sm:text-lg">
               <PlusCircle className="mr-2 h-5 w-5" />
               チームを作成
             </Button>
@@ -160,9 +160,9 @@ export default async function TeamsPage({
       {teamDetail && (
         <Card>
           <CardHeader>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <CardTitle className="text-2xl">{teamDetail.name}</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+              <div className="min-w-0">
+                <CardTitle className="text-xl sm:text-2xl break-all">{teamDetail.name}</CardTitle>
                 <div className="mt-1 flex items-center gap-2">
                   <Badge variant={isAdmin ? "default" : "secondary"}>
                     {isAdmin ? "管理者" : "メンバー"}
@@ -175,7 +175,7 @@ export default async function TeamsPage({
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {selectedTeamId !== defaultTeamId && (
                   <SetDefaultTeamButton teamId={selectedTeamId} />
                 )}

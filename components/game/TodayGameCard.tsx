@@ -17,48 +17,64 @@ interface TodayGameCardProps {
     is_home: boolean;
     status: string;
     location?: string | null;
+    is_free_mode?: boolean;
+    home_team_name?: string | null;
+    visitor_team_name?: string | null;
   };
   score?: { home: number; visitor: number };
   hasLineup?: boolean;
 }
 
 export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardProps) {
+  const isFree = game.is_free_mode ?? false;
+
   const myScore = score
-    ? game.is_home ? score.home : score.visitor
+    ? isFree ? score.home : game.is_home ? score.home : score.visitor
     : null;
   const opponentScore = score
-    ? game.is_home ? score.visitor : score.home
+    ? isFree ? score.visitor : game.is_home ? score.visitor : score.home
     : null;
 
   const isReady = game.status === "scheduled" && hasLineup;
   const isInputting = game.status === "scheduled" && !hasLineup;
   const canSpectate = game.status !== "scheduled" || hasLineup;
 
+  const title = isFree
+    ? `${game.home_team_name ?? "ホーム"} vs ${game.visitor_team_name ?? "ビジター"}`
+    : `vs ${game.opponent_name}`;
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">
-            vs {game.opponent_name}
+            {title}
           </CardTitle>
-          {game.status === "in_progress" ? (
-            <Badge variant="default" className="bg-red-600">
-              <Radio className="mr-1 h-3 w-3" />
-              LIVE
-            </Badge>
-          ) : isReady ? (
-            <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
-              <CheckCircle2 className="mr-1 h-3 w-3" />
-              準備完了
-            </Badge>
-          ) : isInputting ? (
-            <Badge variant="secondary">準備中</Badge>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {isFree && (
+              <Badge variant="outline" className="text-xs">
+                フリー
+              </Badge>
+            )}
+            {game.status === "in_progress" ? (
+              <Badge variant="default" className="bg-red-600">
+                <Radio className="mr-1 h-3 w-3" />
+                LIVE
+              </Badge>
+            ) : isReady ? (
+              <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                準備完了
+              </Badge>
+            ) : isInputting ? (
+              <Badge variant="secondary">準備中</Badge>
+            ) : null}
+          </div>
         </div>
         <div className="text-sm text-muted-foreground">
           <p>
-            {game.is_home ? "ホーム" : "ビジター"}
-            {game.location && <span> / {game.location}</span>}
+            {!isFree && (game.is_home ? "ホーム" : "ビジター")}
+            {game.location && <span>{!isFree && " / "}{game.location}</span>}
             {myScore !== null && opponentScore !== null && (
               <span className="ml-2 font-medium text-foreground">
                 {myScore} - {opponentScore}

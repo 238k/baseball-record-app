@@ -46,11 +46,14 @@ interface Player {
 
 interface GameData {
   id: string;
-  team_id: string;
+  team_id: string | null;
   opponent_name: string;
   is_home: boolean;
   status: string;
   use_dh: boolean;
+  is_free_mode: boolean;
+  home_team_name: string | null;
+  visitor_team_name: string | null;
 }
 
 const POSITIONS_NORMAL = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
@@ -112,23 +115,29 @@ export default function LineupPage() {
 
       const { data: gameData } = await supabase
         .from("games")
-        .select("id, team_id, opponent_name, is_home, status, use_dh")
+        .select("id, team_id, opponent_name, is_home, status, use_dh, is_free_mode, home_team_name, visitor_team_name")
         .eq("id", gameId)
         .single();
 
       if (!gameData) return;
-      const normalizedGame: GameData = { ...gameData, use_dh: gameData.use_dh ?? false };
+      const normalizedGame: GameData = {
+        ...gameData,
+        use_dh: gameData.use_dh ?? false,
+        is_free_mode: gameData.is_free_mode ?? false,
+      };
       const useDh = normalizedGame.use_dh;
       setGame(normalizedGame);
 
-      // Fetch players
-      const { data: playerData } = await supabase
-        .from("players")
-        .select("id, name, number, position")
-        .eq("team_id", normalizedGame.team_id)
-        .eq("is_active", true);
+      // Fetch players (skip for free mode)
+      if (!normalizedGame.is_free_mode && normalizedGame.team_id) {
+        const { data: playerData } = await supabase
+          .from("players")
+          .select("id, name, number, position")
+          .eq("team_id", normalizedGame.team_id)
+          .eq("is_active", true);
 
-      setPlayers(playerData ?? []);
+        setPlayers(playerData ?? []);
+      }
 
       // Load existing lineups
       const { data: existingLineups } = await supabase
@@ -307,7 +316,8 @@ export default function LineupPage() {
     }
 
     // If opponent lineup is hidden, use empty lineup with placeholder names
-    const actualOpponentLineup = showOpponentLineup
+    // Free mode always uses the real opponent lineup
+    const actualOpponentLineup = (showOpponentLineup || game.is_free_mode)
       ? opponentLineup
       : createEmptyLineup(game.use_dh);
 
@@ -317,8 +327,8 @@ export default function LineupPage() {
       playerName: e.playerName || `相手選手${e.battingOrder}`,
     }));
 
-    if (showOpponentLineup && game.use_dh && !opponentDhPitcher?.playerName) {
-      setError(`${game.opponent_name}の先発投手を設定してください`);
+    if ((showOpponentLineup || game.is_free_mode) && game.use_dh && !opponentDhPitcher?.playerName) {
+      setError(`${opponentLabel}の先発投手を設定してください`);
       setSaving(false);
       return;
     }
@@ -391,11 +401,20 @@ export default function LineupPage() {
   }
 
   // Determine which lineup is "my team" vs "opponent"
-  const myTeamLineup = game.is_home ? homeLineup : visitorLineup;
-  const opponentLineup = game.is_home ? visitorLineup : homeLineup;
+  // Free mode: home is always "my team" side
+  const myTeamLineup = (game.is_free_mode || game.is_home) ? homeLineup : visitorLineup;
+  const opponentLineup = (game.is_free_mode || game.is_home) ? visitorLineup : homeLineup;
 
-  const setMyTeamLineup = game.is_home ? setHomeLineup : setVisitorLineup;
-  const setOpponentLineup = game.is_home ? setVisitorLineup : setHomeLineup;
+  const setMyTeamLineup = (game.is_free_mode || game.is_home) ? setHomeLineup : setVisitorLineup;
+  const setOpponentLineup = (game.is_free_mode || game.is_home) ? setVisitorLineup : setHomeLineup;
+
+  // Team labels
+  const myTeamLabel = game.is_free_mode
+    ? (game.home_team_name ?? "ホーム")
+    : "自チーム";
+  const opponentLabel = game.is_free_mode
+    ? (game.visitor_team_name ?? "ビジター")
+    : game.opponent_name;
 
   const sortedPlayers = [...players].sort((a, b) => {
     const na = parseInt(a.number ?? "", 10);
@@ -508,8 +527,8 @@ export default function LineupPage() {
         />
       ) : (
         <LineupEditor
-          title="自チーム"
-          players={players}
+          title={myTeamLabel}
+          players={game.is_free_mode ? [] : players}
           lineup={myTeamLineup}
           onChange={(v) => { setMyTeamLineup(v); markDirty(); }}
           allowUnregistered
@@ -578,18 +597,19 @@ export default function LineupPage() {
         </Card>
       )}
 
-      {showOpponentLineup ? (
+      {(showOpponentLineup || game.is_free_mode) ? (
         <>
           <LineupEditor
-            title={game.opponent_name}
+            title={opponentLabel}
             lineup={opponentLineup}
             onChange={(v) => { setOpponentLineup(v); markDirty(); }}
+            allowUnregistered={game.is_free_mode}
           />
           {game.use_dh && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">
-                  {game.opponent_name} 先発投手
+                  {opponentLabel} 先発投手
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -616,7 +636,7 @@ export default function LineupPage() {
           onClick={() => { setShowOpponentLineup(true); markDirty(); }}
         >
           <ChevronDown className="mr-2 h-4 w-4" />
-          {game.opponent_name}のオーダーを入力する
+          {opponentLabel}のオーダーを入力する
         </Button>
       )}
 

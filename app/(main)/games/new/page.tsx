@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { createGameAction } from "@/app/(main)/games/actions";
+import { createGameAction, createFreeGameAction } from "@/app/(main)/games/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,8 +26,11 @@ interface Team {
 export default function NewGamePage() {
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
+  const [isFreeMode, setIsFreeMode] = useState(false);
   const [teamId, setTeamId] = useState("");
   const [opponentName, setOpponentName] = useState("");
+  const [homeTeamName, setHomeTeamName] = useState("");
+  const [visitorTeamName, setVisitorTeamName] = useState("");
   const [gameDate, setGameDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -71,36 +74,62 @@ export default function NewGamePage() {
       } else if (t.length === 1) {
         setTeamId(t[0].id);
       }
+
+      // Auto-select free mode if user has no teams
+      if (t.length === 0) {
+        setIsFreeMode(true);
+      }
     };
     load();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!teamId) {
-      setError("チームを選択してください");
-      return;
-    }
     setLoading(true);
     setError(null);
 
-    const result = await createGameAction({
-      teamId,
-      opponentName,
-      gameDate,
-      location,
-      isHome,
-      innings,
-      useDh,
-    });
+    if (isFreeMode) {
+      const result = await createFreeGameAction({
+        homeTeamName,
+        visitorTeamName,
+        gameDate,
+        location,
+        innings,
+        useDh,
+      });
 
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+
+      router.push(`/games/${result.gameId}/lineup`);
+    } else {
+      if (!teamId) {
+        setError("チームを選択してください");
+        setLoading(false);
+        return;
+      }
+
+      const result = await createGameAction({
+        teamId,
+        opponentName,
+        gameDate,
+        location,
+        isHome,
+        innings,
+        useDh,
+      });
+
+      if (result.error) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+
+      router.push(`/games/${result.gameId}/lineup`);
     }
-
-    router.push(`/games/${result.gameId}/lineup`);
   };
 
   return (
@@ -119,37 +148,96 @@ export default function NewGamePage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {teams.length > 1 && (
-              <div className="space-y-2">
-                <Label>チーム <span className="text-destructive">*</span></Label>
-                <Select value={teamId} onValueChange={setTeamId}>
-                  <SelectTrigger className="text-lg h-14">
-                    <SelectValue placeholder="チームを選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map((t) => (
-                      <SelectItem key={t.id} value={t.id} className="text-lg">
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
+            {/* Mode toggle */}
             <div className="space-y-2">
-              <Label htmlFor="opponentName">
-                相手チーム名 <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="opponentName"
-                value={opponentName}
-                onChange={(e) => setOpponentName(e.target.value)}
-                placeholder="例：○○シニア"
-                required
-                className="text-lg h-14"
-              />
+              <Label>モード</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={!isFreeMode ? "default" : "outline"}
+                  size="lg"
+                  className="flex-1 min-h-14 text-lg"
+                  onClick={() => setIsFreeMode(false)}
+                  disabled={teams.length === 0}
+                >
+                  チーム試合
+                </Button>
+                <Button
+                  type="button"
+                  variant={isFreeMode ? "default" : "outline"}
+                  size="lg"
+                  className="flex-1 min-h-14 text-lg"
+                  onClick={() => setIsFreeMode(true)}
+                >
+                  フリーモード
+                </Button>
+              </div>
             </div>
+
+            {isFreeMode ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="homeTeamName">
+                    ホームチーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="homeTeamName"
+                    value={homeTeamName}
+                    onChange={(e) => setHomeTeamName(e.target.value)}
+                    placeholder="例：レッドスターズ"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="visitorTeamName">
+                    ビジターチーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="visitorTeamName"
+                    value={visitorTeamName}
+                    onChange={(e) => setVisitorTeamName(e.target.value)}
+                    placeholder="例：ブルーウェーブ"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {teams.length > 1 && (
+                  <div className="space-y-2">
+                    <Label>チーム <span className="text-destructive">*</span></Label>
+                    <Select value={teamId} onValueChange={setTeamId}>
+                      <SelectTrigger className="text-lg h-14">
+                        <SelectValue placeholder="チームを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map((t) => (
+                          <SelectItem key={t.id} value={t.id} className="text-lg">
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="opponentName">
+                    相手チーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="opponentName"
+                    value={opponentName}
+                    onChange={(e) => setOpponentName(e.target.value)}
+                    placeholder="例：○○シニア"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="gameDate">
@@ -176,29 +264,31 @@ export default function NewGamePage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>ホーム / ビジター</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={isHome ? "default" : "outline"}
-                  size="lg"
-                  className="flex-1 min-h-14 text-lg"
-                  onClick={() => setIsHome(true)}
-                >
-                  ホーム
-                </Button>
-                <Button
-                  type="button"
-                  variant={!isHome ? "default" : "outline"}
-                  size="lg"
-                  className="flex-1 min-h-14 text-lg"
-                  onClick={() => setIsHome(false)}
-                >
-                  ビジター
-                </Button>
+            {!isFreeMode && (
+              <div className="space-y-2">
+                <Label>ホーム / ビジター</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={isHome ? "default" : "outline"}
+                    size="lg"
+                    className="flex-1 min-h-14 text-lg"
+                    onClick={() => setIsHome(true)}
+                  >
+                    ホーム
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={!isHome ? "default" : "outline"}
+                    size="lg"
+                    className="flex-1 min-h-14 text-lg"
+                    onClick={() => setIsHome(false)}
+                  >
+                    ビジター
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="innings">イニング数</Label>

@@ -32,18 +32,34 @@ export default async function HomePage() {
     timeZone: "Asia/Tokyo",
   });
 
-  // Fetch today's games only
-  const { data: games } = teamIds.length > 0
+  // Fetch today's team games
+  const { data: teamGames } = teamIds.length > 0
     ? await supabase
         .from("games")
-        .select("id, opponent_name, game_date, is_home, status, location")
+        .select("id, opponent_name, game_date, is_home, status, location, is_free_mode, home_team_name, visitor_team_name")
         .in("team_id", teamIds)
         .eq("game_date", todayString)
         .order("game_date", { ascending: false })
     : { data: [] };
 
+  // Fetch today's free-mode games by this user
+  const { data: freeGames } = await supabase
+    .from("games")
+    .select("id, opponent_name, game_date, is_home, status, location, is_free_mode, home_team_name, visitor_team_name")
+    .eq("is_free_mode", true)
+    .eq("created_by", user.id)
+    .eq("game_date", todayString)
+    .order("game_date", { ascending: false });
+
+  // Merge and deduplicate
+  type GameRow = NonNullable<typeof freeGames>[number];
+  const gameMap = new Map<string, GameRow>();
+  for (const g of teamGames ?? []) gameMap.set(g.id, g);
+  for (const g of freeGames ?? []) gameMap.set(g.id, g);
+  const games = Array.from(gameMap.values());
+
   // Fetch lineup existence for scheduled games
-  const scheduledGameIds = (games ?? [])
+  const scheduledGameIds = games
     .filter((g) => g.status === "scheduled")
     .map((g) => g.id);
 
@@ -60,7 +76,7 @@ export default async function HomePage() {
   }
 
   // Fetch scores for finished and in_progress games from v_scoreboard
-  const scorableGameIds = (games ?? [])
+  const scorableGameIds = games
     .filter((g) => g.status === "finished" || g.status === "in_progress")
     .map((g) => g.id);
 
@@ -90,41 +106,36 @@ export default async function HomePage() {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">今日の試合</h1>
-          {teams.length > 0 && (
-            <div className="flex gap-2">
-              <JoinTeamDialog />
-              <Link href="/games/new">
-                <Button size="lg" className="min-h-16 text-lg">
-                  <PlusCircle className="mr-2 h-5 w-5" />
-                  新規試合登録
-                </Button>
-              </Link>
-            </div>
-          )}
+          <div className="flex gap-2">
+            <JoinTeamDialog />
+            <Link href="/games/new">
+              <Button size="lg" className="min-h-16 text-lg">
+                <PlusCircle className="mr-2 h-5 w-5" />
+                新規試合登録
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {teams.length === 0 ? (
+        {games.length === 0 ? (
           <div className="text-center py-8 space-y-4">
             <p className="text-muted-foreground">
               今日の試合はありません
             </p>
-            <div className="flex justify-center gap-4">
-              <JoinTeamDialog />
-              <Link href="/team/new">
-                <Button size="lg" variant="outline" className="min-h-16 text-lg">
-                  <PlusCircle className="mr-2 h-5 w-5" />
-                  チームを作成
-                </Button>
-              </Link>
-            </div>
+            {teams.length === 0 && (
+              <div className="flex justify-center gap-4">
+                <Link href="/team/new">
+                  <Button size="lg" variant="outline" className="min-h-16 text-lg">
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    チームを作成
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
-        ) : (games ?? []).length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">
-            今日の試合はありません
-          </p>
         ) : (
           <div className="grid gap-4">
-            {(games ?? []).map((game) => (
+            {games.map((game) => (
               <TodayGameCard
                 key={game.id}
                 game={game}

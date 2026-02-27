@@ -306,15 +306,17 @@ export default function GameInputPage() {
   const ownTeamSide = gameState.game?.is_home ? "home" : "visitor";
 
   // Available players for substitution (own team, not yet in lineup)
+  // Skip for free mode (no registered players)
   const [availablePlayers, setAvailablePlayers] = useState<{ id: string; name: string; number: string | null; position: string | null }[]>([]);
   useEffect(() => {
     if (!gameState.game) return;
+    if (gameState.game.is_free_mode || !gameState.game.team_id) return;
     const fetchPlayers = async () => {
       const supabase = createClient();
       const { data: players } = await supabase
         .from("players")
         .select("id, name, number, position")
-        .eq("team_id", gameState.game!.team_id)
+        .eq("team_id", gameState.game!.team_id!)
         .eq("is_active", true)
         .order("number");
       if (!players) return;

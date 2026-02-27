@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { updateGameAction } from "@/app/(main)/games/actions";
+import { updateGameAction, updateFreeGameAction } from "@/app/(main)/games/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,9 @@ interface GameData {
   innings: number;
   use_dh: boolean;
   status: string;
+  is_free_mode: boolean;
+  home_team_name: string | null;
+  visitor_team_name: string | null;
 }
 
 export default function GameEditPage() {
@@ -29,6 +32,8 @@ export default function GameEditPage() {
 
   const [game, setGame] = useState<GameData | null>(null);
   const [opponentName, setOpponentName] = useState("");
+  const [homeTeamName, setHomeTeamName] = useState("");
+  const [visitorTeamName, setVisitorTeamName] = useState("");
   const [gameDate, setGameDate] = useState("");
   const [location, setLocation] = useState("");
   const [isHome, setIsHome] = useState(true);
@@ -43,7 +48,7 @@ export default function GameEditPage() {
       const supabase = createClient();
       const { data } = await supabase
         .from("games")
-        .select("id, opponent_name, game_date, location, is_home, innings, use_dh, status")
+        .select("id, opponent_name, game_date, location, is_home, innings, use_dh, status, is_free_mode, home_team_name, visitor_team_name")
         .eq("id", gameId)
         .single();
 
@@ -61,6 +66,8 @@ export default function GameEditPage() {
 
       setGame(data);
       setOpponentName(data.opponent_name);
+      setHomeTeamName(data.home_team_name ?? "");
+      setVisitorTeamName(data.visitor_team_name ?? "");
       setGameDate(data.game_date);
       setLocation(data.location ?? "");
       setIsHome(data.is_home);
@@ -76,20 +83,38 @@ export default function GameEditPage() {
     setSaving(true);
     setError(null);
 
-    const result = await updateGameAction({
-      gameId,
-      opponentName,
-      gameDate,
-      location,
-      isHome,
-      innings,
-      useDh,
-    });
+    if (game?.is_free_mode) {
+      const result = await updateFreeGameAction({
+        gameId,
+        homeTeamName,
+        visitorTeamName,
+        gameDate,
+        location,
+        innings,
+        useDh,
+      });
 
-    if (result.error) {
-      setError(result.error);
-      setSaving(false);
-      return;
+      if (result.error) {
+        setError(result.error);
+        setSaving(false);
+        return;
+      }
+    } else {
+      const result = await updateGameAction({
+        gameId,
+        opponentName,
+        gameDate,
+        location,
+        isHome,
+        innings,
+        useDh,
+      });
+
+      if (result.error) {
+        setError(result.error);
+        setSaving(false);
+        return;
+      }
     }
 
     router.push(`/games/${gameId}`);
@@ -131,19 +156,52 @@ export default function GameEditPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="opponentName">
-                相手チーム名 <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="opponentName"
-                value={opponentName}
-                onChange={(e) => setOpponentName(e.target.value)}
-                placeholder="例：○○シニア"
-                required
-                className="text-lg h-14"
-              />
-            </div>
+            {game.is_free_mode ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="homeTeamName">
+                    ホームチーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="homeTeamName"
+                    value={homeTeamName}
+                    onChange={(e) => setHomeTeamName(e.target.value)}
+                    placeholder="例：レッドスターズ"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="visitorTeamName">
+                    ビジターチーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="visitorTeamName"
+                    value={visitorTeamName}
+                    onChange={(e) => setVisitorTeamName(e.target.value)}
+                    placeholder="例：ブルーウェーブ"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="opponentName">
+                    相手チーム名 <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="opponentName"
+                    value={opponentName}
+                    onChange={(e) => setOpponentName(e.target.value)}
+                    placeholder="例：○○シニア"
+                    required
+                    className="text-lg h-14"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="gameDate">
@@ -170,29 +228,31 @@ export default function GameEditPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>ホーム / ビジター</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={isHome ? "default" : "outline"}
-                  size="lg"
-                  className="flex-1 min-h-14 text-lg"
-                  onClick={() => setIsHome(true)}
-                >
-                  ホーム
-                </Button>
-                <Button
-                  type="button"
-                  variant={!isHome ? "default" : "outline"}
-                  size="lg"
-                  className="flex-1 min-h-14 text-lg"
-                  onClick={() => setIsHome(false)}
-                >
-                  ビジター
-                </Button>
+            {!game.is_free_mode && (
+              <div className="space-y-2">
+                <Label>ホーム / ビジター</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={isHome ? "default" : "outline"}
+                    size="lg"
+                    className="flex-1 min-h-14 text-lg"
+                    onClick={() => setIsHome(true)}
+                  >
+                    ホーム
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={!isHome ? "default" : "outline"}
+                    size="lg"
+                    className="flex-1 min-h-14 text-lg"
+                    onClick={() => setIsHome(false)}
+                  >
+                    ビジター
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="innings">イニング数</Label>

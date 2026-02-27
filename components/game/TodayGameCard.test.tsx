@@ -74,4 +74,36 @@ describe("TodayGameCard", () => {
     );
     expect(screen.getByText(/ビジター/)).toBeInTheDocument();
   });
+
+  it("shows free mode badge and team names for free mode games", () => {
+    render(
+      <TodayGameCard
+        game={{
+          ...baseGame,
+          status: "scheduled",
+          is_free_mode: true,
+          home_team_name: "レッドスターズ",
+          visitor_team_name: "ブルーウェーブ",
+        }}
+      />
+    );
+    expect(screen.getByText("フリー")).toBeInTheDocument();
+    expect(screen.getByText("レッドスターズ vs ブルーウェーブ")).toBeInTheDocument();
+  });
+
+  it("shows free mode score as home - visitor", () => {
+    render(
+      <TodayGameCard
+        game={{
+          ...baseGame,
+          status: "in_progress",
+          is_free_mode: true,
+          home_team_name: "レッドスターズ",
+          visitor_team_name: "ブルーウェーブ",
+        }}
+        score={{ home: 5, visitor: 2 }}
+      />
+    );
+    expect(screen.getByText("5 - 2")).toBeInTheDocument();
+  });
 });

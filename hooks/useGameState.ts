@@ -24,7 +24,7 @@ export interface BaseRunners {
 
 export interface GameInfo {
   id: string;
-  team_id: string;
+  team_id: string | null;
   opponent_name: string;
   is_home: boolean;
   status: string;
@@ -32,6 +32,10 @@ export interface GameInfo {
   use_dh: boolean;
   game_date: string;
   location: string | null;
+  is_free_mode: boolean;
+  home_team_name: string | null;
+  visitor_team_name: string | null;
+  created_by: string;
 }
 
 export interface GameState {
@@ -104,7 +108,7 @@ export function useGameState(gameId: string) {
       // Fetch game
       const { data: game, error: gameError } = await supabase
         .from("games")
-        .select("id, team_id, opponent_name, is_home, status, innings, use_dh, game_date, location")
+        .select("id, team_id, opponent_name, is_home, status, innings, use_dh, game_date, location, is_free_mode, home_team_name, visitor_team_name, created_by")
         .eq("id", gameId)
         .single();
 
@@ -113,12 +117,16 @@ export function useGameState(gameId: string) {
         return;
       }
 
-      // Fetch team name
-      const { data: team } = await supabase
-        .from("teams")
-        .select("name")
-        .eq("id", game.team_id)
-        .single();
+      // Fetch team name (skip for free mode)
+      let team: { name: string } | null = null;
+      if (!game.is_free_mode && game.team_id) {
+        const { data } = await supabase
+          .from("teams")
+          .select("name")
+          .eq("id", game.team_id)
+          .single();
+        team = data;
+      }
 
       // Fetch lineups (batting lineup only, exclude DH pitchers)
       const { data: lineups } = await supabase
@@ -277,9 +285,13 @@ export function useGameState(gameId: string) {
         }
       }
 
+      const myTeamName = game.is_free_mode
+        ? (game.home_team_name ?? "ホーム")
+        : (team?.name ?? "自チーム");
+
       setState({
         game,
-        myTeamName: team?.name ?? "自チーム",
+        myTeamName,
         lineups: allLineups,
         currentInning,
         currentHalf,

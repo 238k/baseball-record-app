@@ -38,6 +38,7 @@ interface GameDetailClientProps {
   gameDate: string;
   location: string | null;
   initialStatus: string;
+  isFreeMode?: boolean;
 }
 
 export function GameDetailClient({
@@ -50,6 +51,7 @@ export function GameDetailClient({
   gameDate,
   location,
   initialStatus,
+  isFreeMode = false,
 }: GameDetailClientProps) {
   const router = useRouter();
   const state = useRealtimeGame(gameId);
@@ -229,7 +231,7 @@ export function GameDetailClient({
         </h1>
         <div className="text-muted-foreground space-y-1">
           <p>
-            {gameDate} / {isHome ? "ホーム" : "ビジター"} / {innings}回制
+            {gameDate}{!isFreeMode && ` / ${isHome ? "ホーム" : "ビジター"}`} / {innings}回制
           </p>
           {location && <p>{location}</p>}
         </div>

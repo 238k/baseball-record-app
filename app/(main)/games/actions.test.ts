@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, deleteGameAction, undoLastAtBatAction, recordRunnerAdvanceAction } from './actions'
+import { createGameAction, createFreeGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, updateFreeGameAction, deleteGameAction, undoLastAtBatAction, recordRunnerAdvanceAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -1083,5 +1083,162 @@ describe('recordRunnerAdvanceAction', () => {
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
     const result = await recordRunnerAdvanceAction(baseInput)
     expect(result).toEqual({ error: '走者進塁の記録に失敗しました' })
+  })
+})
+
+// ─── createFreeGameAction ─────────────────────────────────────────────────────
+
+describe('createFreeGameAction', () => {
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({ user: null })
+    )
+    const result = await createFreeGameAction({
+      homeTeamName: 'ホームチーム',
+      visitorTeamName: 'ビジターチーム',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('ホームチーム名が空の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase()
+    )
+    const result = await createFreeGameAction({
+      homeTeamName: '',
+      visitorTeamName: 'ビジターチーム',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: 'ホームチーム名を入力してください' })
+  })
+
+  it('ビジターチーム名が空の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase()
+    )
+    const result = await createFreeGameAction({
+      homeTeamName: 'ホームチーム',
+      visitorTeamName: '',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: 'ビジターチーム名を入力してください' })
+  })
+
+  it('DB エラーが発生した場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({
+        insertResult: { data: null, error: { message: 'db error' } },
+      })
+    )
+    const result = await createFreeGameAction({
+      homeTeamName: 'ホームチーム',
+      visitorTeamName: 'ビジターチーム',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: '試合の作成に失敗しました' })
+  })
+
+  it('正常に作成された場合 gameId を返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({
+        insertResult: { data: { id: 'free-game-1' }, error: null },
+      })
+    )
+    const result = await createFreeGameAction({
+      homeTeamName: 'ホームチーム',
+      visitorTeamName: 'ビジターチーム',
+      gameDate: '2026-03-01',
+      location: '球場',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ gameId: 'free-game-1' })
+  })
+})
+
+// ─── updateFreeGameAction ─────────────────────────────────────────────────────
+
+describe('updateFreeGameAction', () => {
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({ user: null })
+    )
+    const result = await updateFreeGameAction({
+      gameId: 'game-1',
+      homeTeamName: 'ホーム',
+      visitorTeamName: 'ビジター',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('フリーモードでない試合の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({
+        gameSelectResult: { data: { status: 'scheduled', is_free_mode: false }, error: null },
+      })
+    )
+    const result = await updateFreeGameAction({
+      gameId: 'game-1',
+      homeTeamName: 'ホーム',
+      visitorTeamName: 'ビジター',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: 'フリーモードの試合ではありません' })
+  })
+
+  it('試合中の試合は編集できない', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({
+        gameSelectResult: { data: { status: 'in_progress', is_free_mode: true }, error: null },
+      })
+    )
+    const result = await updateFreeGameAction({
+      gameId: 'game-1',
+      homeTeamName: 'ホーム',
+      visitorTeamName: 'ビジター',
+      gameDate: '2026-03-01',
+      location: '',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ error: '試合前の試合のみ編集できます' })
+  })
+
+  it('正常に更新された場合 ok を返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeMockSupabase({
+        gameSelectResult: { data: { status: 'scheduled', is_free_mode: true }, error: null },
+      })
+    )
+    const result = await updateFreeGameAction({
+      gameId: 'game-1',
+      homeTeamName: 'ホーム変更後',
+      visitorTeamName: 'ビジター変更後',
+      gameDate: '2026-03-01',
+      location: '球場',
+      innings: 7,
+      useDh: false,
+    })
+    expect(result).toEqual({ ok: true })
   })
 })

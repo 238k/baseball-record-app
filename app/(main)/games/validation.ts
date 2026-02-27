@@ -38,6 +38,25 @@ export const updateGameSchema = z.object({
   useDh: z.boolean(),
 });
 
+export const createFreeGameSchema = z.object({
+  homeTeamName: z.string().min(1, "ホームチーム名を入力してください"),
+  visitorTeamName: z.string().min(1, "ビジターチーム名を入力してください"),
+  gameDate: z.string().min(1, "試合日を入力してください"),
+  location: z.string(),
+  innings: z.number().int().min(1).max(30),
+  useDh: z.boolean(),
+});
+
+export const updateFreeGameSchema = z.object({
+  gameId: idString,
+  homeTeamName: z.string().min(1, "ホームチーム名を入力してください"),
+  visitorTeamName: z.string().min(1, "ビジターチーム名を入力してください"),
+  gameDate: z.string().min(1, "試合日を入力してください"),
+  location: z.string(),
+  innings: z.number().int().min(1).max(30),
+  useDh: z.boolean(),
+});
+
 const lineupEntrySchema = z.object({
   battingOrder: z.number().int().min(1).max(9),
   playerId: z.string().nullable(),

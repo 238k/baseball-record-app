@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getPitchingStatsDelta } from "./pitching-stats";
 import {
   createGameSchema,
+  createFreeGameSchema,
   updateGameSchema,
+  updateFreeGameSchema,
   saveLineupSchema,
   recordAtBatSchema,
   changePitcherSchema,
@@ -48,12 +50,59 @@ export async function createGameAction(input: {
       is_home: input.isHome,
       innings: input.innings,
       use_dh: input.useDh,
+      created_by: user.id,
     })
     .select("id")
     .single();
 
   if (insertError || !game) {
     console.error("createGame error:", insertError);
+    return { error: "試合の作成に失敗しました" };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/games");
+  return { gameId: game.id };
+}
+
+export async function createFreeGameAction(input: {
+  homeTeamName: string;
+  visitorTeamName: string;
+  gameDate: string;
+  location: string;
+  innings: number;
+  useDh: boolean;
+}) {
+  const parsed = parseOrError(createFreeGameSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  const { data: game, error: insertError } = await supabase
+    .from("games")
+    .insert({
+      team_id: null,
+      opponent_name: "",
+      is_free_mode: true,
+      created_by: user.id,
+      home_team_name: input.homeTeamName.trim(),
+      visitor_team_name: input.visitorTeamName.trim(),
+      game_date: input.gameDate,
+      location: input.location.trim() || null,
+      is_home: true,
+      innings: input.innings,
+      use_dh: input.useDh,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !game) {
+    console.error("createFreeGame error:", insertError);
     return { error: "試合の作成に失敗しました" };
   }
 
@@ -723,6 +772,59 @@ export async function updateGameAction(input: {
 
   if (error) {
     console.error("updateGame error:", error);
+    return { error: "試合の更新に失敗しました" };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/games");
+  revalidatePath(`/games/${input.gameId}`);
+  return { ok: true };
+}
+
+export async function updateFreeGameAction(input: {
+  gameId: string;
+  homeTeamName: string;
+  visitorTeamName: string;
+  gameDate: string;
+  location: string;
+  innings: number;
+  useDh: boolean;
+}) {
+  const parsed = parseOrError(updateFreeGameSchema, input);
+  if (parsed.error) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインが必要です" };
+
+  // Only scheduled games can be edited
+  const { data: game } = await supabase
+    .from("games")
+    .select("status, is_free_mode")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game) return { error: "試合が見つかりません" };
+  if (game.status !== "scheduled") return { error: "試合前の試合のみ編集できます" };
+  if (!game.is_free_mode) return { error: "フリーモードの試合ではありません" };
+
+  const { error } = await supabase
+    .from("games")
+    .update({
+      home_team_name: input.homeTeamName.trim(),
+      visitor_team_name: input.visitorTeamName.trim(),
+      game_date: input.gameDate,
+      location: input.location.trim() || null,
+      innings: input.innings,
+      use_dh: input.useDh,
+    })
+    .eq("id", input.gameId);
+
+  if (error) {
+    console.error("updateFreeGame error:", error);
     return { error: "試合の更新に失敗しました" };
   }
 

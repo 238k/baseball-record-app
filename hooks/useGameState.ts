@@ -99,8 +99,10 @@ export function useGameState(gameId: string) {
     error: null,
   });
 
-  const reload = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+  const reload = useCallback(async (silent?: boolean) => {
+    if (!silent) {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+    }
 
     try {
       const supabase = createClient();
@@ -315,7 +317,11 @@ export function useGameState(gameId: string) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetching on mount
   useEffect(() => { reload(); }, [reload]);
 
-  return { ...state, reload };
+  const optimisticUpdate = useCallback((partial: Partial<GameState>) => {
+    setState(prev => ({ ...prev, ...partial }));
+  }, []);
+
+  return { ...state, reload, optimisticUpdate };
 }
 
 // ---- Helpers ----

@@ -252,7 +252,7 @@ export default function GameInputPage() {
   const [runnerDialogOpen, setRunnerDialogOpen] = useState(false);
   const [runnerRows, setRunnerRows] = useState<RunnerRow[]>([]);
   const [batterDest, setBatterDest] = useState<RunnerDest>("1st");
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
 
   // Change of innings dialog
   const [showInningChange, setShowInningChange] = useState(false);
@@ -272,7 +272,7 @@ export default function GameInputPage() {
   // Steal dialog state
   const [showStealDialog, setShowStealDialog] = useState(false);
   const [stealLineupId, setStealLineupId] = useState("");
-  const [stealSaving, setStealSaving] = useState(false);
+  const [stealSaving] = useState(false);
 
   // Substitution dialog state
   const [showSubDialog, setShowSubDialog] = useState(false);
@@ -281,7 +281,7 @@ export default function GameInputPage() {
   const [subNewPlayerId, setSubNewPlayerId] = useState<string | null>(null);
   const [subNewPlayerName, setSubNewPlayerName] = useState("");
   const [subNewPosition, setSubNewPosition] = useState("");
-  const [subSaving, setSubSaving] = useState(false);
+  const [subSaving] = useState(false);
 
   // Position change dialog state
   const [showPosChangeDialog, setShowPosChangeDialog] = useState(false);
@@ -291,7 +291,7 @@ export default function GameInputPage() {
     newPlayerName: string;
   }>>({}); // lineupId → substitute player info
   const [posSubManualInput, setPosSubManualInput] = useState<Set<string>>(new Set()); // lineupIds using manual text input
-  const [posChangeSaving, setPosChangeSaving] = useState(false);
+  const [posChangeSaving] = useState(false);
 
   // Auto-save banner state
   const [autoSaveBanner, setAutoSaveBanner] = useState<{
@@ -301,17 +301,19 @@ export default function GameInputPage() {
 
   // Track last result code between confirm and save
   const lastResultCode = useRef("");
+  // Guard to prevent double-submit during background action
+  const pendingActionRef = useRef(false);
   const [finishing, setFinishing] = useState(false);
 
   // Undo state
   const [showUndoConfirm, setShowUndoConfirm] = useState(false);
-  const [undoing, setUndoing] = useState(false);
+  const [undoing] = useState(false);
 
   // WP/PB/BK dialog state
   const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
   const [advanceEventType, setAdvanceEventType] = useState<"wild_pitch" | "passed_ball" | "balk">("wild_pitch");
   const [advanceSelections, setAdvanceSelections] = useState<Record<string, string>>({}); // lineupId → toBase
-  const [advanceSaving, setAdvanceSaving] = useState(false);
+  const [advanceSaving] = useState(false);
 
   // Pitch count state
   const [pitchLog, setPitchLog] = useState<PitchResult[]>([]);
@@ -432,10 +434,10 @@ export default function GameInputPage() {
   // ---- Auto-save (no runners, deterministic result) ----
 
   const autoSaveAtBat = useCallback(
-    async (code: string, label: string, bDest: RunnerDest) => {
+    (code: string, label: string, bDest: RunnerDest) => {
       if (!currentBatter || !gameState.game) return;
+      if (pendingActionRef.current) return;
 
-      setSaving(true);
       setActionError(null);
 
       const baseRunnersBefore: { base: string; lineupId: string }[] = [];
@@ -452,33 +454,11 @@ export default function GameInputPage() {
 
       const rbi = computeRbi(code, bDest, []);
 
-      const result = await recordAtBatAction({
-        gameId,
-        inning: gameState.currentInning,
-        inningHalf: gameState.currentHalf,
-        battingOrder: gameState.currentBatterOrder,
-        lineupId: currentBatter.id,
-        result: code,
-        rbi,
-        pitchCount: pitchLog.length,
-        pitches: pitchLog,
-        baseRunnersBefore,
-        runnerDestinations: destinations,
-        runnersAfter,
-      });
-
-      setSaving(false);
-
-      if (result.error) {
-        setActionError(result.error);
-        return;
-      }
-
+      // Optimistic UI update
       setAutoSaveBanner({
         playerName: currentBatter.player_name ?? "—",
         resultLabel: label,
       });
-
       setPendingResult(null);
       setPitchLog([]);
       syncPitchLogToDb([]);
@@ -499,8 +479,47 @@ export default function GameInputPage() {
         setNextInningInfo({ inning: nextInning, half: nextHalf });
         setShowInningChange(true);
       } else {
-        await gameState.reload();
+        // Compute optimistic state
+        const optimisticRunners: BaseRunners = { first: null, second: null, third: null };
+        if (bDest === "1st") optimisticRunners.first = currentBatter;
+        else if (bDest === "2nd") optimisticRunners.second = currentBatter;
+        else if (bDest === "3rd") optimisticRunners.third = currentBatter;
+
+        const scoreDelta = bDest === "scored" ? 1 : 0;
+        const scoreKey = gameState.currentHalf === "top" ? "visitor" : "home";
+        const otherKey = scoreKey === "home" ? "visitor" : "home";
+
+        gameState.optimisticUpdate({
+          currentOuts: gameState.currentOuts + outsFromResult,
+          currentBatterOrder: (gameState.currentBatterOrder % 9) + 1,
+          baseRunners: optimisticRunners,
+          score: {
+            [scoreKey]: gameState.score[scoreKey] + scoreDelta,
+            [otherKey]: gameState.score[otherKey],
+          } as { home: number; visitor: number },
+        });
       }
+
+      // Fire-and-forget server action
+      pendingActionRef.current = true;
+      void recordAtBatAction({
+        gameId,
+        inning: gameState.currentInning,
+        inningHalf: gameState.currentHalf,
+        battingOrder: gameState.currentBatterOrder,
+        lineupId: currentBatter.id,
+        result: code,
+        rbi,
+        pitchCount: pitchLog.length,
+        pitches: pitchLog,
+        baseRunnersBefore,
+        runnerDestinations: destinations,
+        runnersAfter,
+      }).then(result => {
+        pendingActionRef.current = false;
+        if (result.error) setActionError(result.error);
+        return gameState.reload(true);
+      });
     },
     [currentBatter, gameState, gameId, pitchLog, syncPitchLogToDb]
   );
@@ -587,10 +606,10 @@ export default function GameInputPage() {
     []
   );
 
-  const handleSaveAtBat = useCallback(async () => {
+  const handleSaveAtBat = useCallback(() => {
     if (!currentBatter || !gameState.game) return;
+    if (pendingActionRef.current) return;
 
-    setSaving(true);
     setActionError(null);
 
     // Build base_runners snapshot
@@ -628,39 +647,17 @@ export default function GameInputPage() {
 
     const resultCode = lastResultCode.current;
 
-    const result = await recordAtBatAction({
-      gameId,
-      inning: gameState.currentInning,
-      inningHalf: gameState.currentHalf,
-      battingOrder: gameState.currentBatterOrder,
-      lineupId: currentBatter.id,
-      result: resultCode,
-      rbi: computedRbi,
-      pitchCount: pitchLog.length,
-      pitches: pitchLog,
-      baseRunnersBefore,
-      runnerDestinations: destinations,
-      runnersAfter,
-    });
-
-    setSaving(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
+    // Close dialog immediately (optimistic)
     setRunnerDialogOpen(false);
     setPendingResult(null);
     setPitchLog([]);
     syncPitchLogToDb([]);
 
-    // Check if 3 outs reached after this at-bat
+    // Compute optimistic state
     const outsFromResult = countOutsFromResult(resultCode, batterDest, runnerRows);
     const totalOuts = gameState.currentOuts + outsFromResult;
 
     if (totalOuts >= 3) {
-      // Change of innings
       let nextHalf: "top" | "bottom";
       let nextInning: number;
       if (gameState.currentHalf === "top") {
@@ -673,8 +670,53 @@ export default function GameInputPage() {
       setNextInningInfo({ inning: nextInning, half: nextHalf });
       setShowInningChange(true);
     } else {
-      await gameState.reload();
+      // Build optimistic runners from runnersAfter
+      const findLineup = (lineupId: string) =>
+        gameState.lineups.find((l) => l.id === lineupId) ?? null;
+      const optimisticRunners: BaseRunners = { first: null, second: null, third: null };
+      for (const ra of runnersAfter) {
+        const player = findLineup(ra.lineupId);
+        if (ra.base === "1st") optimisticRunners.first = player;
+        else if (ra.base === "2nd") optimisticRunners.second = player;
+        else if (ra.base === "3rd") optimisticRunners.third = player;
+      }
+
+      const scoredCount = runnerRows.filter((r) => r.destination === "scored").length
+        + (batterDest === "scored" ? 1 : 0);
+      const scoreKey = gameState.currentHalf === "top" ? "visitor" : "home";
+      const otherKey = scoreKey === "home" ? "visitor" : "home";
+
+      gameState.optimisticUpdate({
+        currentOuts: gameState.currentOuts + outsFromResult,
+        currentBatterOrder: (gameState.currentBatterOrder % 9) + 1,
+        baseRunners: optimisticRunners,
+        score: {
+          [scoreKey]: gameState.score[scoreKey] + scoredCount,
+          [otherKey]: gameState.score[otherKey],
+        } as { home: number; visitor: number },
+      });
     }
+
+    // Fire-and-forget server action
+    pendingActionRef.current = true;
+    void recordAtBatAction({
+      gameId,
+      inning: gameState.currentInning,
+      inningHalf: gameState.currentHalf,
+      battingOrder: gameState.currentBatterOrder,
+      lineupId: currentBatter.id,
+      result: resultCode,
+      rbi: computedRbi,
+      pitchCount: pitchLog.length,
+      pitches: pitchLog,
+      baseRunnersBefore,
+      runnerDestinations: destinations,
+      runnersAfter,
+    }).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
+    });
   }, [
     currentBatter,
     gameState,
@@ -689,29 +731,27 @@ export default function GameInputPage() {
   const handleInningChangeConfirm = useCallback(async () => {
     setShowInningChange(false);
     setNextInningInfo(null);
-    await gameState.reload();
+    await gameState.reload(true);
   }, [gameState]);
 
-  const handlePitcherChangeConfirm = useCallback(async () => {
+  const handlePitcherChangeConfirm = useCallback(() => {
     if (!selectedPitcherLineupId || !gameState.game) return;
+    if (pendingActionRef.current) return;
 
-    setSaving(true);
-    const result = await changePitcherAction({
+    setShowPitcherChange(false);
+    setSelectedPitcherLineupId("");
+
+    pendingActionRef.current = true;
+    void changePitcherAction({
       gameId,
       currentInning: gameState.currentInning,
       newPitcherLineupId: selectedPitcherLineupId,
       fieldingTeamSide,
+    }).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
     });
-    setSaving(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
-    setShowPitcherChange(false);
-    setSelectedPitcherLineupId("");
-    await gameState.reload();
   }, [selectedPitcherLineupId, gameState, gameId, fieldingTeamSide]);
 
   const handleFinishGame = useCallback(async () => {
@@ -729,23 +769,20 @@ export default function GameInputPage() {
 
   // ---- Undo handler ----
 
-  const handleUndo = useCallback(async () => {
-    setUndoing(true);
+  const handleUndo = useCallback(() => {
+    if (pendingActionRef.current) return;
+
     setActionError(null);
-
-    const result = await undoLastAtBatAction(gameId);
-
-    setUndoing(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
     setShowUndoConfirm(false);
     setPitchLog([]);
     syncPitchLogToDb([]);
-    await gameState.reload();
+
+    pendingActionRef.current = true;
+    void undoLastAtBatAction(gameId).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
+    });
   }, [gameId, gameState, syncPitchLogToDb]);
 
   // ---- WP/PB/BK handler ----
@@ -779,7 +816,9 @@ export default function GameInputPage() {
     return options;
   }, [gameState.baseRunners]);
 
-  const handleRunnerAdvance = useCallback(async () => {
+  const handleRunnerAdvance = useCallback(() => {
+    if (pendingActionRef.current) return;
+
     const advances = Object.entries(advanceSelections)
       .filter(([, toBase]) => toBase !== "stay")
       .map(([lineupId, toBase]) => {
@@ -796,25 +835,20 @@ export default function GameInputPage() {
       return;
     }
 
-    setAdvanceSaving(true);
     setActionError(null);
+    setShowAdvanceDialog(false);
+    setAdvanceSelections({});
 
-    const result = await recordRunnerAdvanceAction({
+    pendingActionRef.current = true;
+    void recordRunnerAdvanceAction({
       gameId,
       eventType: advanceEventType,
       advances,
+    }).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
     });
-
-    setAdvanceSaving(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
-    setShowAdvanceDialog(false);
-    setAdvanceSelections({});
-    await gameState.reload();
   }, [advanceSelections, advanceRunnerOptions, gameId, advanceEventType, gameState]);
 
   // Build runner options for steal dialog (only runners whose next base is empty)
@@ -847,38 +881,35 @@ export default function GameInputPage() {
     return options;
   }, [gameState.baseRunners]);
 
-  const handleSteal = useCallback(async (eventType: "stolen_base" | "caught_stealing") => {
+  const handleSteal = useCallback((eventType: "stolen_base" | "caught_stealing") => {
+    if (pendingActionRef.current) return;
+
     const runner = stealRunnerOptions.find((r) => r.lineupId === stealLineupId);
     if (!runner) return;
 
-    setStealSaving(true);
     setActionError(null);
+    setShowStealDialog(false);
+    setStealLineupId("");
 
-    const result = await recordStealAction({
+    pendingActionRef.current = true;
+    void recordStealAction({
       gameId,
       lineupId: runner.lineupId,
       eventType,
       fromBase: runner.fromBase,
+    }).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
     });
-
-    setStealSaving(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
-    setShowStealDialog(false);
-    setStealLineupId("");
-    await gameState.reload();
   }, [stealLineupId, stealRunnerOptions, gameId, gameState]);
 
   // ---- Substitution handler ----
 
-  const handleSubstitution = useCallback(async () => {
+  const handleSubstitution = useCallback(() => {
     if (!gameState.game || !subNewPlayerName.trim()) return;
+    if (pendingActionRef.current) return;
 
-    setSubSaving(true);
     setActionError(null);
 
     // Determine target batting order and team side
@@ -886,18 +917,25 @@ export default function GameInputPage() {
     let targetTeamSide: "home" | "visitor";
 
     if (subType === "pinch_hitter") {
-      if (!currentBatter) { setSubSaving(false); return; }
+      if (!currentBatter) return;
       targetBattingOrder = currentBatter.batting_order;
       targetTeamSide = battingTeamSide as "home" | "visitor";
     } else {
       // pinch runner: find the runner's batting order
       const runner = gameState.lineups.find((l) => l.id === subTargetLineupId);
-      if (!runner) { setSubSaving(false); return; }
+      if (!runner) return;
       targetBattingOrder = runner.batting_order;
       targetTeamSide = runner.team_side as "home" | "visitor";
     }
 
-    const result = await substitutePlayerAction({
+    setShowSubDialog(false);
+    setSubNewPlayerId(null);
+    setSubNewPlayerName("");
+    setSubNewPosition("");
+    setSubTargetLineupId("");
+
+    pendingActionRef.current = true;
+    void substitutePlayerAction({
       gameId,
       battingOrder: targetBattingOrder,
       teamSide: targetTeamSide,
@@ -907,27 +945,18 @@ export default function GameInputPage() {
       currentInning: gameState.currentInning,
       type: subType,
       replacedLineupId: subType === "pinch_runner" ? subTargetLineupId : undefined,
+    }).then(result => {
+      pendingActionRef.current = false;
+      if (result.error) setActionError(result.error);
+      return gameState.reload(true);
     });
-
-    setSubSaving(false);
-
-    if (result.error) {
-      setActionError(result.error);
-      return;
-    }
-
-    setShowSubDialog(false);
-    setSubNewPlayerId(null);
-    setSubNewPlayerName("");
-    setSubNewPosition("");
-    setSubTargetLineupId("");
-    await gameState.reload();
   }, [gameState, gameId, subType, subNewPlayerId, subNewPlayerName, subNewPosition, subTargetLineupId, currentBatter, battingTeamSide]);
 
   // ---- Position change handler ----
 
-  const handlePositionChange = useCallback(async () => {
+  const handlePositionChange = useCallback(() => {
     if (!gameState.game) return;
+    if (pendingActionRef.current) return;
 
     const subEntries = Object.entries(posSubstitutions).filter(
       ([, sub]) => sub.newPlayerName.trim()
@@ -946,51 +975,56 @@ export default function GameInputPage() {
       return;
     }
 
-    setPosChangeSaving(true);
     setActionError(null);
-
-    // 1. Process substitutions first
-    for (const [lineupId, sub] of subEntries) {
-      const lineup = fieldingLineup.find((l) => l.id === lineupId);
-      if (!lineup) continue;
-
-      const result = await substitutePlayerAction({
-        gameId,
-        battingOrder: lineup.batting_order,
-        teamSide: fieldingTeamSide as "home" | "visitor",
-        newPlayerId: sub.newPlayerId,
-        newPlayerName: sub.newPlayerName.trim(),
-        newPosition: posChanges[lineupId] ?? lineup.position ?? "",
-        currentInning: gameState.currentInning,
-        type: "pinch_hitter",
-      });
-
-      if (result.error) {
-        setPosChangeSaving(false);
-        setActionError(result.error);
-        return;
-      }
-    }
-
-    // 2. Process position-only changes
-    if (posOnlyChanges.length > 0) {
-      const result = await changePositionAction({
-        gameId,
-        changes: posOnlyChanges,
-      });
-
-      if (result.error) {
-        setPosChangeSaving(false);
-        setActionError(result.error);
-        return;
-      }
-    }
-
-    setPosChangeSaving(false);
     setShowPosChangeDialog(false);
     setPosChanges({});
     setPosSubstitutions({});
-    await gameState.reload();
+
+    pendingActionRef.current = true;
+
+    const runPosChange = async () => {
+      // 1. Process substitutions first
+      for (const [lineupId, sub] of subEntries) {
+        const lineup = fieldingLineup.find((l) => l.id === lineupId);
+        if (!lineup) continue;
+
+        const result = await substitutePlayerAction({
+          gameId,
+          battingOrder: lineup.batting_order,
+          teamSide: fieldingTeamSide as "home" | "visitor",
+          newPlayerId: sub.newPlayerId,
+          newPlayerName: sub.newPlayerName.trim(),
+          newPosition: posChanges[lineupId] ?? lineup.position ?? "",
+          currentInning: gameState.currentInning,
+          type: "pinch_hitter",
+        });
+
+        if (result.error) {
+          pendingActionRef.current = false;
+          setActionError(result.error);
+          return;
+        }
+      }
+
+      // 2. Process position-only changes
+      if (posOnlyChanges.length > 0) {
+        const result = await changePositionAction({
+          gameId,
+          changes: posOnlyChanges,
+        });
+
+        if (result.error) {
+          pendingActionRef.current = false;
+          setActionError(result.error);
+          return;
+        }
+      }
+
+      pendingActionRef.current = false;
+      await gameState.reload(true);
+    };
+
+    void runPosChange();
   }, [gameState, gameId, posChanges, posSubstitutions, fieldingLineup, fieldingTeamSide]);
 
   // ---- Loading / error states ----

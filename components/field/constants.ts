@@ -38,3 +38,9 @@ export const POSITION_CIRCLE_RADIUS = 24;
 
 /** Base square size (half-diagonal) */
 export const BASE_SIZE = 8;
+
+/** Destination zones for runner advancement UI */
+export const DEST_ZONES = {
+  scored: { x: 200, y: 55 },
+  out: { x: 345, y: 365 },
+} as const;

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createTeamAction, joinTeamAction, updateTeamNameAction } from './actions'
+import { createTeamAction, joinTeamAction, updateTeamNameAction, ensureDefaultTeam } from './actions'
 import { createClient } from '@/lib/supabase/server'
 
 // Supabase クライアントのモックビルダー
@@ -13,6 +13,7 @@ function makeMockSupabase({
   insertResult = { data: { id: 'team-1' }, error: null },
   rpcResult = { data: 'team-1', error: null },
   updateResult = { error: null },
+  profileDefaultTeamId = null as string | null,
 } = {}) {
   const single = vi.fn()
   const selectChain = { single }
@@ -24,11 +25,26 @@ function makeMockSupabase({
 
   const rpc = vi.fn().mockResolvedValue(rpcResult)
 
+  // profiles テーブル用モック
+  const profileUpdateEqFn = vi.fn().mockResolvedValue({ error: null })
+  const profileSelectSingle = vi.fn().mockResolvedValue({
+    data: { default_team_id: profileDefaultTeamId },
+    error: null,
+  })
+  const profileSelectEqFn = vi.fn().mockReturnValue({ single: profileSelectSingle })
+  const profileSelectFn = vi.fn().mockReturnValue({ eq: profileSelectEqFn })
+
   const from = vi.fn((table: string) => {
     if (table === 'teams') {
       return {
         insert: vi.fn().mockReturnValue(insertChain),
         update: vi.fn().mockReturnValue(updateChain),
+      }
+    }
+    if (table === 'profiles') {
+      return {
+        select: profileSelectFn,
+        update: vi.fn().mockReturnValue({ eq: profileUpdateEqFn }),
       }
     }
     return {}
@@ -41,6 +57,7 @@ function makeMockSupabase({
     },
     from,
     rpc,
+    _profileUpdateEqFn: profileUpdateEqFn,
   }
 }
 
@@ -145,6 +162,28 @@ describe('joinTeamAction', () => {
     )
     const result = await joinTeamAction('ABCD1234')
     expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── ensureDefaultTeam ───────────────────────────────────────────────────────
+
+describe('ensureDefaultTeam', () => {
+  it('default_team_id が null の場合、指定チームをデフォルトに設定する', async () => {
+    const mock = makeMockSupabase({ profileDefaultTeamId: null })
+    await ensureDefaultTeam(mock as never, 'user-1', 'team-new')
+    // profiles.update が呼ばれたことを確認
+    expect(mock._profileUpdateEqFn).toHaveBeenCalled()
+  })
+
+  it('default_team_id が既に設定されている場合、更新しない', async () => {
+    const mock = makeMockSupabase({ profileDefaultTeamId: 'team-existing' })
+    await ensureDefaultTeam(mock as never, 'user-1', 'team-new')
+    // profiles の update は呼ばれない（from('profiles') は select のみ）
+    // from が 1 回だけ呼ばれる（select のみ、update は呼ばれない）
+    const profilesCalls = (mock.from as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: string[]) => c[0] === 'profiles'
+    )
+    expect(profilesCalls).toHaveLength(1) // select のみ
   })
 })
 

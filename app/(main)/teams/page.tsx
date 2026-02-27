@@ -4,11 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
 import { TeamSwitcher } from "@/components/team/TeamSwitcher";
 import { EditTeamNameDialog } from "@/components/team/EditTeamNameDialog";
+import { SetDefaultTeamButton } from "@/components/team/SetDefaultTeamButton";
 import { ActiveSessionsSection } from "@/components/team/ActiveSessionsSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Users, UserCog, BarChart3 } from "lucide-react";
+import { PlusCircle, Users, UserCog, BarChart3, Star } from "lucide-react";
 
 export default async function TeamsPage({
   searchParams,
@@ -40,6 +41,16 @@ export default async function TeamsPage({
     const t = m.teams as { id: string; name: string };
     return [{ id: t.id, name: t.name, role: m.role }];
   });
+
+  // Auto-repair: default_team_id が null かつチームありの場合、最初のチームに設定
+  let defaultTeamId = profile?.default_team_id ?? null;
+  if (!defaultTeamId && teams.length > 0) {
+    await supabase
+      .from("profiles")
+      .update({ default_team_id: teams[0].id })
+      .eq("id", user.id);
+    defaultTeamId = teams[0].id;
+  }
 
   // No teams: show empty state
   if (teams.length === 0) {
@@ -152,18 +163,29 @@ export default async function TeamsPage({
             <div className="flex items-start justify-between gap-2">
               <div>
                 <CardTitle className="text-2xl">{teamDetail.name}</CardTitle>
-                <div className="mt-1">
+                <div className="mt-1 flex items-center gap-2">
                   <Badge variant={isAdmin ? "default" : "secondary"}>
                     {isAdmin ? "管理者" : "メンバー"}
                   </Badge>
+                  {selectedTeamId === defaultTeamId && (
+                    <Badge variant="outline" className="gap-1">
+                      <Star className="h-3 w-3" />
+                      デフォルト
+                    </Badge>
+                  )}
                 </div>
               </div>
-              {isAdmin && (
-                <EditTeamNameDialog
-                  teamId={teamDetail.id}
-                  currentName={teamDetail.name}
-                />
-              )}
+              <div className="flex items-center gap-2">
+                {selectedTeamId !== defaultTeamId && (
+                  <SetDefaultTeamButton teamId={selectedTeamId} />
+                )}
+                {isAdmin && (
+                  <EditTeamNameDialog
+                    teamId={teamDetail.id}
+                    currentName={teamDetail.name}
+                  />
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>

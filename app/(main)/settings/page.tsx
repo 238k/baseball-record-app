@@ -89,7 +89,7 @@ export default function SettingsPage() {
   };
 
   const handleDefaultTeamChange = async (value: string) => {
-    const newTeamId = value === "none" ? null : value;
+    const newTeamId = value;
     setDefaultTeamId(newTeamId);
     setSavingTeam(true);
     setTeamError(null);
@@ -176,17 +176,14 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>チーム選択</Label>
               <Select
-                value={defaultTeamId ?? "none"}
+                value={defaultTeamId ?? undefined}
                 onValueChange={handleDefaultTeamChange}
                 disabled={savingTeam}
               >
                 <SelectTrigger className="text-lg h-14">
-                  <SelectValue placeholder="選択なし" />
+                  <SelectValue placeholder="チームを選択" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none" className="text-lg">
-                    選択なし
-                  </SelectItem>
                   {teams.map((t) => (
                     <SelectItem key={t.id} value={t.id} className="text-lg">
                       {t.name}

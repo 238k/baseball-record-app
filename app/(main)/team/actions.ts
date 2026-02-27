@@ -2,6 +2,30 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * default_team_id が null の場合のみ指定チームをデフォルトに設定する。
+ * 最初に所属したチームが自動的にデフォルトになる。
+ */
+export async function ensureDefaultTeam(
+  supabase: SupabaseClient,
+  userId: string,
+  teamId: string
+) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("default_team_id")
+    .eq("id", userId)
+    .single();
+
+  if (profile?.default_team_id) return;
+
+  await supabase
+    .from("profiles")
+    .update({ default_team_id: teamId })
+    .eq("id", userId);
+}
 
 export async function createTeamAction(teamName: string) {
   const supabase = await createClient();
@@ -26,6 +50,8 @@ export async function createTeamAction(teamName: string) {
     console.error("createTeam user:", user?.id, "insertError:", JSON.stringify(insertError));
     return { error: "チームの作成に失敗しました" };
   }
+
+  await ensureDefaultTeam(supabase, user.id, createdTeam.id);
 
   revalidatePath("/");
   return { teamId: createdTeam.id };
@@ -55,6 +81,10 @@ export async function joinTeamAction(inviteCode: string) {
       return { error: "すでにこのチームのメンバーです" };
     }
     return { error: "参加に失敗しました" };
+  }
+
+  if (teamId) {
+    await ensureDefaultTeam(supabase, user.id, teamId as string);
   }
 
   revalidatePath("/");

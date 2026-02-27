@@ -1176,8 +1176,11 @@ export default function GameInputPage() {
 
   const positionLabel = currentBatter?.position ?? "";
   const numberPrefix = currentBatter?.player_number ? `#${currentBatter.player_number} ` : "";
-  const batterDisplay = currentBatter
-    ? `${numberPrefix}${currentBatter.player_name ?? "—"}（${gameState.currentBatterOrder}番・${positionLabel}）`
+  const batterOrderLabel = currentBatter
+    ? `${gameState.currentBatterOrder}番・${positionLabel}`
+    : "";
+  const batterName = currentBatter
+    ? `${numberPrefix}${currentBatter.player_name ?? "—"}`
     : "—";
 
   const halfLabel = gameState.currentHalf === "top" ? "表" : "裏";
@@ -1231,14 +1234,11 @@ export default function GameInputPage() {
         </div>
       )}
 
-      {/* ── Diamond + BSO count + Batter ── */}
+      {/* ── Diamond + BSO count ── */}
       <div className="flex items-start gap-4 px-1">
         {/* Diamond */}
         <div className="shrink-0">
-          <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-28 h-28" />
-          <p className="text-sm font-bold text-center mt-1 truncate max-w-28">
-            {batterDisplay}
-          </p>
+          <FieldRunnerDisplay baseRunners={gameState.baseRunners} className="w-24 h-24" />
         </div>
 
         {/* BSO count (vertical) */}
@@ -1284,6 +1284,14 @@ export default function GameInputPage() {
             <Badge variant="outline" className="ml-auto tabular-nums">{pitchLog.length}球</Badge>
           </div>
         </div>
+      </div>
+
+      {/* ── Current batter (full width) ── */}
+      <div className="flex items-baseline gap-2 px-1">
+        {batterOrderLabel && (
+          <span className="text-sm text-muted-foreground shrink-0">{batterOrderLabel}</span>
+        )}
+        <span className="text-base font-bold truncate">{batterName}</span>
       </div>
 
       {/* ── Runner action trigger ── */}

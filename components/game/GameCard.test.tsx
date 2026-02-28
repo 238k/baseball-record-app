@@ -53,6 +53,22 @@ describe("GameCard", () => {
     expect(screen.getByText("5 - 2")).toBeInTheDocument();
   });
 
+  it("finished games do not show record/edit button", () => {
+    render(
+      <GameCard
+        game={{
+          ...baseGame,
+          status: "finished",
+        }}
+        score={{ home: 5, visitor: 2 }}
+      />
+    );
+    expect(screen.queryByText("記録")).not.toBeInTheDocument();
+    expect(screen.queryByText("編集")).not.toBeInTheDocument();
+    // Spectate button should still be visible
+    expect(screen.getByText("観戦")).toBeInTheDocument();
+  });
+
   it("does not show home/visitor label for free mode games", () => {
     render(
       <GameCard

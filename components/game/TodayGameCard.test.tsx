@@ -91,6 +91,19 @@ describe("TodayGameCard", () => {
     expect(screen.getByText("レッドスターズ vs ブルーウェーブ")).toBeInTheDocument();
   });
 
+  it("finished games do not show record/edit button", () => {
+    render(
+      <TodayGameCard
+        game={{ ...baseGame, status: "finished" }}
+        score={{ home: 5, visitor: 2 }}
+      />
+    );
+    expect(screen.queryByText("記録")).not.toBeInTheDocument();
+    expect(screen.queryByText("編集")).not.toBeInTheDocument();
+    // Spectate button should still be visible
+    expect(screen.getByText("観戦")).toBeInTheDocument();
+  });
+
   it("shows free mode score as home - visitor", () => {
     render(
       <TodayGameCard

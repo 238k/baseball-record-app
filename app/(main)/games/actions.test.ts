@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 
-import { createGameAction, createFreeGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, updateFreeGameAction, deleteGameAction, undoLastAtBatAction, recordRunnerAdvanceAction } from './actions'
+import { createGameAction, createFreeGameAction, saveLineupAction, startGameAction, recordStealAction, substitutePlayerAction, changePositionAction, updateGameAction, updateFreeGameAction, deleteGameAction, undoLastAtBatAction, recordRunnerAdvanceAction, updateGameDhAction, finishGameAction } from './actions'
 import { getPitchingStatsDelta } from './pitching-stats'
 import { createClient } from '@/lib/supabase/server'
 
@@ -594,15 +594,24 @@ describe('substitutePlayerAction', () => {
 
   function makeSubMock({
     user = { id: 'user-1' } as { id: string } | null,
+    gameStatus = 'in_progress',
     insertResult = { data: { id: 'new-lineup-1' }, error: null } as { data: unknown; error: unknown },
   } = {}) {
+    // game status check: from('games').select('status').eq('id', gameId).single()
+    const gameSingle = vi.fn().mockResolvedValue({ data: { status: gameStatus }, error: null })
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
+    // lineup insert: from('lineups').insert({...}).select('id').single()
     const single = vi.fn().mockResolvedValue(insertResult)
     const selectFn = vi.fn().mockReturnValue({ single })
     const insertFn = vi.fn().mockReturnValue({ select: selectFn })
 
-    const from = vi.fn(() => ({
-      insert: insertFn,
-    }))
+    const from = vi.fn((table: string) => {
+      if (table === 'games') return { select: gameSelectFn }
+      if (table === 'lineups') return { insert: insertFn }
+      return {}
+    })
 
     return {
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
@@ -630,7 +639,18 @@ describe('substitutePlayerAction', () => {
     expect(mock.from).toHaveBeenCalledWith('lineups')
   })
 
+  it('試合が進行中でない場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeSubMock({ gameStatus: 'scheduled' }))
+    const result = await substitutePlayerAction(baseInput)
+    expect(result).toEqual({ error: '試合が進行中ではありません' })
+  })
+
   it('代走: lineups INSERT + runners_after を更新する', async () => {
+    // game status check
+    const gameSingle = vi.fn().mockResolvedValue({ data: { status: 'in_progress' }, error: null })
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
     const updateEqFn = vi.fn().mockResolvedValue({ error: null })
     const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
 
@@ -648,6 +668,7 @@ describe('substitutePlayerAction', () => {
     const lineupInsertFn = vi.fn().mockReturnValue({ select: lineupSelectFn })
 
     const from = vi.fn((table: string) => {
+      if (table === 'games') return { select: gameSelectFn }
       if (table === 'lineups') return { insert: lineupInsertFn }
       if (table === 'at_bats') return { select: atBatSelect, update: updateFn }
       return {}
@@ -684,14 +705,29 @@ describe('substitutePlayerAction', () => {
 describe('changePositionAction', () => {
   function makePosChangeMock({
     user = { id: 'user-1' } as { id: string } | null,
+    gameStatus = 'in_progress',
+    lineupVerifyResult = { data: [{ id: 'l-1' }, { id: 'l-2' }], error: null } as { data: unknown; error: unknown },
     updateResult = { error: null } as { error: unknown },
   } = {}) {
+    // game status check: from('games').select('status').eq('id', gameId).single()
+    const gameSingle = vi.fn().mockResolvedValue({ data: { status: gameStatus }, error: null })
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
+    // lineup ownership check: from('lineups').select('id').eq('game_id',...).in('id',...)
+    const lineupInFn = vi.fn().mockResolvedValue(lineupVerifyResult)
+    const lineupEqFn = vi.fn().mockReturnValue({ in: lineupInFn })
+    const lineupSelectFn = vi.fn().mockReturnValue({ eq: lineupEqFn })
+
+    // lineup update: from('lineups').update({position}).eq('id', lineupId)
     const updateEqFn = vi.fn().mockResolvedValue(updateResult)
     const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
 
-    const from = vi.fn(() => ({
-      update: updateFn,
-    }))
+    const from = vi.fn((table: string) => {
+      if (table === 'games') return { select: gameSelectFn }
+      if (table === 'lineups') return { select: lineupSelectFn, update: updateFn }
+      return {}
+    })
 
     return {
       auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
@@ -711,6 +747,29 @@ describe('changePositionAction', () => {
     expect(result).toEqual({ error: '変更する守備位置を選択してください' })
   })
 
+  it('試合が進行中でない場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makePosChangeMock({ gameStatus: 'scheduled' }))
+    const result = await changePositionAction({
+      gameId: 'game-1',
+      changes: [{ lineupId: 'l-1', newPosition: '一' }],
+    })
+    expect(result).toEqual({ error: '試合が進行中ではありません' })
+  })
+
+  it('不正なラインナップIDが含まれる場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makePosChangeMock({ lineupVerifyResult: { data: [{ id: 'l-1' }], error: null } })
+    )
+    const result = await changePositionAction({
+      gameId: 'game-1',
+      changes: [
+        { lineupId: 'l-1', newPosition: '一' },
+        { lineupId: 'l-invalid', newPosition: '二' },
+      ],
+    })
+    expect(result).toEqual({ error: '不正なラインナップIDが含まれています' })
+  })
+
   it('守備位置を更新する', async () => {
     const mock = makePosChangeMock()
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
@@ -726,7 +785,10 @@ describe('changePositionAction', () => {
   })
 
   it('UPDATE エラーの場合エラーを返す', async () => {
-    const mock = makePosChangeMock({ updateResult: { error: { message: 'update error' } } })
+    const mock = makePosChangeMock({
+      lineupVerifyResult: { data: [{ id: 'l-1' }], error: null },
+      updateResult: { error: { message: 'update error' } },
+    })
     ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
     const result = await changePositionAction({
       gameId: 'game-1',
@@ -1240,5 +1302,120 @@ describe('updateFreeGameAction', () => {
       useDh: false,
     })
     expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── updateGameDhAction ──────────────────────────────────────────────────────
+
+describe('updateGameDhAction', () => {
+  function makeDhMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    gameSelectResult = { data: { status: 'scheduled' }, error: null } as { data: unknown; error: unknown },
+    updateResult = { error: null } as { error: unknown },
+  } = {}) {
+    // game status check: from('games').select('status').eq('id', gameId).single()
+    const gameSingle = vi.fn().mockResolvedValue(gameSelectResult)
+    const gameEq = vi.fn().mockReturnValue({ single: gameSingle })
+    const gameSelectFn = vi.fn().mockReturnValue({ eq: gameEq })
+
+    // game update: from('games').update({use_dh}).eq('id', gameId)
+    const updateEqFn = vi.fn().mockResolvedValue(updateResult)
+    const updateFn = vi.fn().mockReturnValue({ eq: updateEqFn })
+
+    const from = vi.fn(() => ({
+      select: gameSelectFn,
+      update: updateFn,
+    }))
+
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from,
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeDhMock({ user: null }))
+    const result = await updateGameDhAction('game-1', true)
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('試合が見つからない場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeDhMock({ gameSelectResult: { data: null, error: null } })
+    )
+    const result = await updateGameDhAction('game-1', true)
+    expect(result).toEqual({ error: '試合が見つかりません' })
+  })
+
+  it('scheduled 以外の試合はエラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeDhMock({ gameSelectResult: { data: { status: 'in_progress' }, error: null } })
+    )
+    const result = await updateGameDhAction('game-1', true)
+    expect(result).toEqual({ error: '試合前の試合のみDH制を変更できます' })
+  })
+
+  it('UPDATE エラーの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeDhMock({ updateResult: { error: { message: 'update error' } } })
+    )
+    const result = await updateGameDhAction('game-1', true)
+    expect(result).toEqual({ error: 'DH制の変更に失敗しました' })
+  })
+
+  it('正常に変更できた場合 ok: true を返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeDhMock())
+    const result = await updateGameDhAction('game-1', true)
+    expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── finishGameAction ────────────────────────────────────────────────────────
+
+describe('finishGameAction', () => {
+  function makeFinishMock({
+    user = { id: 'user-1' } as { id: string } | null,
+    rpcResult = { error: null } as { error: unknown },
+  } = {}) {
+    return {
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+      from: vi.fn(),
+      rpc: vi.fn().mockResolvedValue(rpcResult),
+    }
+  }
+
+  it('未ログインの場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(makeFinishMock({ user: null }))
+    const result = await finishGameAction('game-1')
+    expect(result).toEqual({ error: 'ログインが必要です' })
+  })
+
+  it('RPC エラー（not in progress）の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFinishMock({ rpcResult: { error: { message: 'Game is not in progress' } } })
+    )
+    const result = await finishGameAction('game-1')
+    expect(result).toEqual({ error: '試合が進行中ではありません' })
+  })
+
+  it('RPC エラー（その他）の場合エラーを返す', async () => {
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeFinishMock({ rpcResult: { error: { message: 'some other error' } } })
+    )
+    const result = await finishGameAction('game-1')
+    expect(result).toEqual({ error: '試合の終了に失敗しました' })
+  })
+
+  it('正常に終了できた場合 ok: true を返す', async () => {
+    const mock = makeFinishMock()
+    ;(createClient as ReturnType<typeof vi.fn>).mockResolvedValue(mock)
+    const result = await finishGameAction('game-1')
+    expect(result).toEqual({ ok: true })
+    expect(mock.rpc).toHaveBeenCalledWith('finish_game', { p_game_id: 'game-1' })
+  })
+
+  it('試合IDが空の場合エラーを返す', async () => {
+    const result = await finishGameAction('')
+    expect(result).toEqual({ error: '試合IDが不正です' })
   })
 })

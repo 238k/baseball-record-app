@@ -7,6 +7,16 @@ import { createClient } from '@/lib/supabase/client'
 import { MemberList } from '@/components/team/MemberList'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ArrowLeft, Copy, RefreshCw, Loader2 } from 'lucide-react'
 
 interface TeamData {
@@ -35,6 +45,7 @@ export default function InvitePage() {
   const [copied, setCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -70,9 +81,12 @@ export default function InvitePage() {
   }
 
   const handleRegenerate = async () => {
+    setShowRegenConfirm(false)
     setRegenerating(true)
     const supabase = createClient()
-    const newCode = Math.random().toString(36).substring(2, 10)
+    const bytes = new Uint8Array(5)
+    crypto.getRandomValues(bytes)
+    const newCode = Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').substring(0, 8).toUpperCase()
     await supabase.from('teams').update({ invite_code: newCode }).eq('id', teamId)
     setRefreshKey(k => k + 1)
     setRegenerating(false)
@@ -109,7 +123,7 @@ export default function InvitePage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRegenerate}
+              onClick={() => setShowRegenConfirm(true)}
               disabled={regenerating}
             >
               {regenerating ? (
@@ -138,6 +152,23 @@ export default function InvitePage() {
           />
         )}
       </div>
+
+      <AlertDialog open={showRegenConfirm} onOpenChange={setShowRegenConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>招待コードを再発行しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              現在の招待コードは無効になります。既に共有済みのコードでは参加できなくなります。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRegenerate}>
+              再発行する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

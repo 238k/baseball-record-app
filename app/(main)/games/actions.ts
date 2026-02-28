@@ -263,6 +263,16 @@ export async function updateGameDhAction(gameId: string, useDh: boolean) {
 
   if (!user) return { error: "ログインが必要です" };
 
+  // Only scheduled games can change DH setting
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", gameId)
+    .single();
+
+  if (!game) return { error: "試合が見つかりません" };
+  if (game.status !== "scheduled") return { error: "試合前の試合のみDH制を変更できます" };
+
   const { error } = await supabase
     .from("games")
     .update({ use_dh: useDh })
@@ -581,6 +591,17 @@ export async function substitutePlayerAction(input: {
 
   if (!user) return { error: "ログインが必要です" };
 
+  // Verify game is in progress
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game || game.status !== "in_progress") {
+    return { error: "試合が進行中ではありません" };
+  }
+
   // Insert new lineup entry
   const { data: newLineup, error: insertError } = await supabase
     .from("lineups")
@@ -644,6 +665,29 @@ export async function changePositionAction(input: {
 
   if (!user) return { error: "ログインが必要です" };
 
+  // Verify game is in progress
+  const { data: game } = await supabase
+    .from("games")
+    .select("status")
+    .eq("id", input.gameId)
+    .single();
+
+  if (!game || game.status !== "in_progress") {
+    return { error: "試合が進行中ではありません" };
+  }
+
+  // Verify all lineupIds belong to this game
+  const lineupIds = input.changes.map((c) => c.lineupId);
+  const { data: lineups } = await supabase
+    .from("lineups")
+    .select("id")
+    .eq("game_id", input.gameId)
+    .in("id", lineupIds);
+
+  if (!lineups || lineups.length !== lineupIds.length) {
+    return { error: "不正なラインナップIDが含まれています" };
+  }
+
   for (const change of input.changes) {
     const { error } = await supabase
       .from("lineups")
@@ -670,53 +714,16 @@ export async function finishGameAction(gameId: string) {
 
   if (!user) return { error: "ログインが必要です" };
 
-  // Check game status
-  {
-    const { data: game } = await supabase
-      .from("games")
-      .select("status")
-      .eq("id", gameId)
-      .single();
-
-    if (!game || game.status !== "in_progress") {
-      return { error: "試合が進行中ではありません" };
-    }
-  }
-
-  // Close all open pitching records
-  const { data: openRecords } = await supabase
-    .from("pitching_records")
-    .select("id")
-    .eq("game_id", gameId)
-    .is("inning_to", null);
-
-  if (openRecords && openRecords.length > 0) {
-    // Get current inning from the last at-bat
-    const { data: lastAb } = await supabase
-      .from("at_bats")
-      .select("inning")
-      .eq("game_id", gameId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    const finalInning = lastAb?.inning ?? 9;
-
-    for (const record of openRecords) {
-      await supabase
-        .from("pitching_records")
-        .update({ inning_to: finalInning })
-        .eq("id", record.id);
-    }
-  }
-
-  const { error } = await supabase
-    .from("games")
-    .update({ status: "finished" })
-    .eq("id", gameId);
+  // Use atomic RPC to close pitching records and update game status in a single transaction
+  const { error } = await supabase.rpc("finish_game", {
+    p_game_id: gameId,
+  });
 
   if (error) {
     console.error("finishGame error:", error);
+    if (error.message.includes("not in progress")) {
+      return { error: "試合が進行中ではありません" };
+    }
     return { error: "試合の終了に失敗しました" };
   }
 

@@ -519,6 +519,9 @@ export default function GameInputPage() {
         pendingActionRef.current = false;
         if (result.error) setActionError(result.error);
         return gameState.reload(true);
+      }).catch(() => {
+        pendingActionRef.current = false;
+        setActionError("通信エラーが発生しました");
       });
     },
     [currentBatter, gameState, gameId, pitchLog, syncPitchLogToDb]
@@ -716,6 +719,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [
     currentBatter,
@@ -751,6 +757,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [selectedPitcherLineupId, gameState, gameId, fieldingTeamSide]);
 
@@ -782,6 +791,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [gameId, gameState, syncPitchLogToDb]);
 
@@ -848,6 +860,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [advanceSelections, advanceRunnerOptions, gameId, advanceEventType, gameState]);
 
@@ -901,6 +916,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [stealLineupId, stealRunnerOptions, gameId, gameState]);
 
@@ -949,6 +967,9 @@ export default function GameInputPage() {
       pendingActionRef.current = false;
       if (result.error) setActionError(result.error);
       return gameState.reload(true);
+    }).catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
     });
   }, [gameState, gameId, subType, subNewPlayerId, subNewPlayerName, subNewPosition, subTargetLineupId, currentBatter, battingTeamSide]);
 
@@ -1024,7 +1045,10 @@ export default function GameInputPage() {
       await gameState.reload(true);
     };
 
-    void runPosChange();
+    void runPosChange().catch(() => {
+      pendingActionRef.current = false;
+      setActionError("通信エラーが発生しました");
+    });
   }, [gameState, gameId, posChanges, posSubstitutions, fieldingLineup, fieldingTeamSide]);
 
   // ---- Loading / error states ----

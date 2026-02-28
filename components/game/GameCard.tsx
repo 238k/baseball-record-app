@@ -31,7 +31,7 @@ function getDisplayStatus(status: string, hasLineup: boolean) {
       : { label: "準備中", variant: "secondary" as const };
   }
   if (status === "in_progress") return { label: "試合中", variant: "default" as const };
-  if (status === "finished") return { label: "終了", variant: "outline" as const };
+  if (status === "finished") return { label: "試合終了", variant: "outline" as const };
   return { label: status, variant: "secondary" as const };
 }
 
@@ -94,19 +94,21 @@ export function GameCard({ game, score, hasLineup = false }: GameCardProps) {
       </CardHeader>
       <CardContent>
         <div className="flex gap-2">
-          <Link href={`/games/${game.id}/input`} className="flex-1">
-            <Button
-              size="lg"
-              className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"
-              variant="outline"
-            >
-              {game.status === "scheduled" ? (
-                <><ClipboardEdit className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />編集</>
-              ) : (
-                <><Play className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />記録</>
-              )}
-            </Button>
-          </Link>
+          {game.status !== "finished" && (
+            <Link href={`/games/${game.id}/input`} className="flex-1">
+              <Button
+                size="lg"
+                className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"
+                variant="outline"
+              >
+                {game.status === "scheduled" ? (
+                  <><ClipboardEdit className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />編集</>
+                ) : (
+                  <><Play className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />記録</>
+                )}
+              </Button>
+            </Link>
+          )}
           {canSpectate ? (
             <Link href={`/games/${game.id}`} className="flex-1">
               <Button

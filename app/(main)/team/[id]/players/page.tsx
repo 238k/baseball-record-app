@@ -9,6 +9,16 @@ import { PlayerForm } from '@/components/team/PlayerForm'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ArrowLeft, UserX } from 'lucide-react'
 
 type Player = Tables<'players'>
@@ -21,6 +31,7 @@ export default function PlayersPage() {
   const [showRetired, setShowRetired] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [retiringPlayer, setRetiringPlayer] = useState<Player | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -56,6 +67,7 @@ export default function PlayersPage() {
   const players = showRetired ? allPlayers : allPlayers.filter(p => p.is_active)
 
   const handleRetire = async (playerId: string) => {
+    setRetiringPlayer(null)
     const supabase = createClient()
     const { error } = await supabase
       .from('players')
@@ -126,7 +138,7 @@ export default function PlayersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleRetire(player.id)}
+                      onClick={() => setRetiringPlayer(player)}
                       title="引退"
                     >
                       <UserX className="h-4 w-4 text-muted-foreground" />
@@ -138,6 +150,23 @@ export default function PlayersPage() {
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!retiringPlayer} onOpenChange={(open) => !open && setRetiringPlayer(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>選手を引退させますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {retiringPlayer?.name} を引退扱いにします。引退後はオーダーに登録できなくなります。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => retiringPlayer && handleRetire(retiringPlayer.id)}>
+              引退させる
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

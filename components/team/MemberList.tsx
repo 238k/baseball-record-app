@@ -6,6 +6,16 @@ import { promoteMemberAction } from '@/app/(main)/team/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Loader2, Shield, Trash2 } from 'lucide-react'
 
 interface Member {
@@ -27,6 +37,7 @@ interface MemberListProps {
 
 export function MemberList({ members, currentUserId, isAdmin, onChanged }: MemberListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [removingMember, setRemovingMember] = useState<Member | null>(null)
 
   const handlePromote = async (memberId: string) => {
     setLoadingId(memberId)
@@ -36,6 +47,7 @@ export function MemberList({ members, currentUserId, isAdmin, onChanged }: Membe
   }
 
   const handleRemove = async (memberId: string) => {
+    setRemovingMember(null)
     setLoadingId(memberId)
     const supabase = createClient()
     await supabase
@@ -85,7 +97,7 @@ export function MemberList({ members, currentUserId, isAdmin, onChanged }: Membe
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleRemove(member.id)}
+                    onClick={() => setRemovingMember(member)}
                     disabled={isLoading}
                     title="チームから削除"
                   >
@@ -101,6 +113,26 @@ export function MemberList({ members, currentUserId, isAdmin, onChanged }: Membe
           </Card>
         )
       })}
+
+      <AlertDialog open={!!removingMember} onOpenChange={(open) => !open && setRemovingMember(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>メンバーを除外しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removingMember?.profiles.display_name} をチームから除外します。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => removingMember && handleRemove(removingMember.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              除外する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

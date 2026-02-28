@@ -1111,7 +1111,7 @@ export default function GameInputPage() {
               オーダーを編集する
             </Button>
           </Link>
-          <GameActionButtons gameId={gameId} hasLineup={hasLineup} />
+          <GameActionButtons gameId={gameId} hasLineup={hasLineup} onStarted={() => gameState.reload()} />
         </div>
       </div>
     );

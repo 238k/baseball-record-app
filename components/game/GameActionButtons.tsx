@@ -20,9 +20,10 @@ import { Loader2, Play, Trash2 } from "lucide-react";
 interface GameActionButtonsProps {
   gameId: string;
   hasLineup: boolean;
+  onStarted?: () => void;
 }
 
-export function GameActionButtons({ gameId, hasLineup }: GameActionButtonsProps) {
+export function GameActionButtons({ gameId, hasLineup, onStarted }: GameActionButtonsProps) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -49,7 +50,11 @@ export function GameActionButtons({ gameId, hasLineup }: GameActionButtonsProps)
       setStarting(false);
       return;
     }
-    router.refresh();
+    if (onStarted) {
+      onStarted();
+    } else {
+      router.refresh();
+    }
   };
 
   return (

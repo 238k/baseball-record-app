@@ -61,6 +61,11 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
                 <Radio className="mr-1 h-3 w-3" />
                 LIVE
               </Badge>
+            ) : game.status === "finished" ? (
+              <Badge variant="outline">
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                試合終了
+              </Badge>
             ) : isReady ? (
               <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
                 <CheckCircle2 className="mr-1 h-3 w-3" />

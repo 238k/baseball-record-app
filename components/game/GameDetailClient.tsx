@@ -305,22 +305,26 @@ export function GameDetailClient({
         </CardContent>
       </Card>
 
-      {/* Record input button */}
-      <Link href={`/games/${gameId}/input`}>
-        <Button
-          size="lg"
-          className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
-        >
-          <Play className="mr-2 h-5 w-5" />
-          記録を入力する
-        </Button>
-      </Link>
+      {/* Record input button (hide for finished games) */}
+      {!isFinished && (
+        <>
+          <Link href={`/games/${gameId}/input`}>
+            <Button
+              size="lg"
+              className="w-full min-h-16 text-lg bg-green-600 hover:bg-green-700"
+            >
+              <Play className="mr-2 h-5 w-5" />
+              記録を入力する
+            </Button>
+          </Link>
 
-      {/* Input holder */}
-      {state.inputHolder && (
-        <p className="text-xs text-muted-foreground text-center">
-          入力者: {state.inputHolder.displayName}
-        </p>
+          {/* Input holder */}
+          {state.inputHolder && (
+            <p className="text-xs text-muted-foreground text-center">
+              入力者: {state.inputHolder.displayName}
+            </p>
+          )}
+        </>
       )}
 
       {/* Stats tabs (batting/pitching stats available after game starts) */}

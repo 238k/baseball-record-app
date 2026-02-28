@@ -49,16 +49,20 @@ export default function NewGamePage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("default_team_id")
-        .eq("id", user.id)
-        .single();
+      const [profileResult, membershipsResult] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("default_team_id")
+          .eq("id", user.id)
+          .single(),
+        supabase
+          .from("team_members")
+          .select("teams(id, name)")
+          .eq("profile_id", user.id),
+      ]);
 
-      const { data: memberships } = await supabase
-        .from("team_members")
-        .select("teams(id, name)")
-        .eq("profile_id", user.id);
+      const profile = profileResult.data;
+      const memberships = membershipsResult.data;
 
       const t = (memberships ?? []).flatMap((m) => {
         if (!m.teams) return [];

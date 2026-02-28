@@ -49,28 +49,38 @@ export function useRealtimeGame(gameId: string): UseRealtimeGameReturn {
 
   // ---- Fetch supplementary data ----
   const fetchSupplementary = useCallback(async () => {
-    // Inning scores from v_scoreboard
-    const { data: scores } = await supabase
-      .from("v_scoreboard")
-      .select("inning, inning_half, runs")
-      .eq("game_id", gameId)
-      .order("inning");
+    // Fetch all three in parallel
+    const [scoresResult, sessionResult, atBatsResult] = await Promise.all([
+      supabase
+        .from("v_scoreboard")
+        .select("inning, inning_half, runs")
+        .eq("game_id", gameId)
+        .order("inning"),
+      supabase
+        .from("game_input_sessions")
+        .select("profile_id, current_pitch_log")
+        .eq("game_id", gameId)
+        .maybeSingle(),
+      supabase
+        .from("at_bats")
+        .select("id, inning, inning_half, result, rbi, lineups(player_name), pitches(pitch_number, result)")
+        .eq("game_id", gameId)
+        .not("result", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(5),
+    ]);
 
+    // Process scores
     setInningScores(
-      (scores ?? []).map((s) => ({
+      (scoresResult.data ?? []).map((s) => ({
         inning: s.inning as number,
         inning_half: s.inning_half as string,
         runs: Number(s.runs),
       }))
     );
 
-    // Input session holder + current pitch log
-    const { data: session } = await supabase
-      .from("game_input_sessions")
-      .select("profile_id, current_pitch_log")
-      .eq("game_id", gameId)
-      .maybeSingle();
-
+    // Process session holder (profile fetch depends on session result)
+    const session = sessionResult.data;
     if (session) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -92,17 +102,9 @@ export function useRealtimeGame(gameId: string): UseRealtimeGameReturn {
       setCurrentPitchLog([]);
     }
 
-    // Recent at-bats (latest 5) with pitches
-    const { data: atBats } = await supabase
-      .from("at_bats")
-      .select("id, inning, inning_half, result, rbi, lineups(player_name), pitches(pitch_number, result)")
-      .eq("game_id", gameId)
-      .not("result", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
+    // Process recent at-bats
     setRecentAtBats(
-      (atBats ?? []).map((ab) => {
+      (atBatsResult.data ?? []).map((ab) => {
         const pitchRows = ab.pitches as { pitch_number: number; result: string }[] | null;
         const sortedPitches = (pitchRows ?? [])
           .sort((a, b) => a.pitch_number - b.pitch_number)

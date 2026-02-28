@@ -119,25 +119,34 @@ export function useGameState(gameId: string) {
         return;
       }
 
-      // Fetch team name (skip for free mode)
-      let team: { name: string } | null = null;
-      if (!game.is_free_mode && game.team_id) {
-        const { data } = await supabase
-          .from("teams")
-          .select("name")
-          .eq("id", game.team_id)
-          .single();
-        team = data;
-      }
+      // Fetch team name, lineups, and at_bats in parallel (all depend only on game data)
+      const teamPromise = (!game.is_free_mode && game.team_id)
+        ? supabase.from("teams").select("name").eq("id", game.team_id).single()
+        : Promise.resolve({ data: null });
 
-      // Fetch lineups (batting lineup only, exclude DH pitchers)
-      const { data: lineups } = await supabase
+      const lineupsPromise = supabase
         .from("lineups")
         .select("id, batting_order, player_id, player_name, position, team_side, inning_from, players(number)")
         .eq("game_id", gameId)
         .order("batting_order")
         .order("inning_from")
         .order("created_at");
+
+      const atBatsPromise = supabase
+        .from("at_bats")
+        .select("id, inning, inning_half, batting_order, lineup_id, result, rbi, runners_after")
+        .eq("game_id", gameId)
+        .order("created_at", { ascending: true });
+
+      const [teamResult, lineupsResult, atBatsResult] = await Promise.all([
+        teamPromise,
+        lineupsPromise,
+        atBatsPromise,
+      ]);
+
+      const team = teamResult.data as { name: string } | null;
+      const lineups = lineupsResult.data;
+      const atBats = atBatsResult.data;
 
       const allLineups: LineupPlayer[] = (lineups ?? []).map((l) => ({
         id: l.id,
@@ -150,32 +159,17 @@ export function useGameState(gameId: string) {
         inning_from: l.inning_from,
       }));
 
-      // Fetch all at_bats for this game
-      const { data: atBats } = await supabase
-        .from("at_bats")
-        .select("id, inning, inning_half, batting_order, lineup_id, result, rbi, runners_after")
-        .eq("game_id", gameId)
-        .order("created_at", { ascending: true });
-
-      // runner_events doesn't have game_id — fetch by at_bat_ids
+      // Fetch runner_events and base_runners in parallel (both depend on at_bat_ids)
       const atBatIds = (atBats ?? []).map((ab) => ab.id);
       let allRunnerEvents: RunnerEventRow[] = [];
-      if (atBatIds.length > 0) {
-        const { data: reData } = await supabase
-          .from("runner_events")
-          .select("at_bat_id, lineup_id, event_type")
-          .in("at_bat_id", atBatIds);
-        allRunnerEvents = reData ?? [];
-      }
-
-      // Fetch base_runners snapshots
       let allBaseRunners: BaseRunnerRow[] = [];
       if (atBatIds.length > 0) {
-        const { data: brData } = await supabase
-          .from("base_runners")
-          .select("at_bat_id, base, lineup_id")
-          .in("at_bat_id", atBatIds);
-        allBaseRunners = brData ?? [];
+        const [reResult, brResult] = await Promise.all([
+          supabase.from("runner_events").select("at_bat_id, lineup_id, event_type").in("at_bat_id", atBatIds),
+          supabase.from("base_runners").select("at_bat_id, base, lineup_id").in("at_bat_id", atBatIds),
+        ]);
+        allRunnerEvents = reResult.data ?? [];
+        allBaseRunners = brResult.data ?? [];
       }
 
       // ---- Reconstruct state ----

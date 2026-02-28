@@ -85,7 +85,7 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
       </CardHeader>
       <CardContent>
         <div className="flex gap-2">
-          <Link href={`/games/${game.id}/input`} prefetch={false} className="flex-1">
+          <Link href={`/games/${game.id}/input`} className="flex-1">
             <Button
               size="lg"
               className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"
@@ -99,7 +99,7 @@ export function TodayGameCard({ game, score, hasLineup = false }: TodayGameCardP
             </Button>
           </Link>
           {canSpectate ? (
-            <Link href={`/games/${game.id}`} prefetch={false} className="flex-1">
+            <Link href={`/games/${game.id}`} className="flex-1">
               <Button
                 size="lg"
                 className="w-full min-h-11 sm:min-h-14 text-base sm:text-lg"

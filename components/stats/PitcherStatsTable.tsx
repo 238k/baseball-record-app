@@ -115,7 +115,7 @@ function PlayerPitcherTable({ data, teamId }: {
             <TableRow key={row.game_id}>
               <TableCell className="whitespace-nowrap sticky left-0 bg-background px-1 sm:px-2">
                 {row.game_id && teamId ? (
-                  <Link href={`/games/${row.game_id}`} className="text-primary hover:underline" prefetch={false}>
+                  <Link href={`/games/${row.game_id}`} className="text-primary hover:underline">
                     {row.game_date ?? "—"}
                   </Link>
                 ) : (
@@ -160,7 +160,7 @@ function CareerPitcherTable({ data, teamId }: { data: PitcherCareerStats[]; team
         <TableBody>
           {data.map((row) => {
             const nameCell = teamId && row.player_id ? (
-              <Link href={`/team/${teamId}/players/${row.player_id}`} className="text-primary hover:underline" prefetch={false}>
+              <Link href={`/team/${teamId}/players/${row.player_id}`} className="text-primary hover:underline">
                 {row.name ?? "—"}
               </Link>
             ) : (

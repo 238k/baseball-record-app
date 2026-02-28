@@ -105,7 +105,6 @@ export default async function PlayerStatsPage({
     <div className="space-y-6">
       <Link
         href={`/team/${teamId}/players`}
-        prefetch={false}
         className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="mr-1 h-4 w-4" />

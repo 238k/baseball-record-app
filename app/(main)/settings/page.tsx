@@ -119,7 +119,6 @@ export default function SettingsPage() {
     <div className="max-w-lg mx-auto space-y-4">
       <Link
         href="/"
-        prefetch={false}
         className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="mr-1 h-4 w-4" />

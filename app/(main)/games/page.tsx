@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { GameCard } from "@/components/game/GameCard";
@@ -10,7 +9,7 @@ export default async function GamesListPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) return null;
 
   const { data: memberships } = await supabase
     .from("team_members")
@@ -98,7 +97,6 @@ export default async function GamesListPage() {
       <div className="flex items-center">
         <Link
           href="/"
-          prefetch={false}
           className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="mr-1 h-4 w-4" />

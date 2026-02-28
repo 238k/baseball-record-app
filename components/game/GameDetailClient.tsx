@@ -204,7 +204,6 @@ export function GameDetailClient({
       <div className="flex items-center justify-between">
         <Link
           href="/"
-          prefetch={false}
           className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="mr-1 h-4 w-4" />

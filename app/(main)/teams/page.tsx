@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { JoinTeamDialog } from "@/components/team/JoinTeamDialog";
@@ -22,7 +21,7 @@ export default async function TeamsPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) return null;
 
   // Fetch profile for default_team_id
   const { data: profile } = await supabase

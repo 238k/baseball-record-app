@@ -122,7 +122,7 @@ function PlayerBatterTable({ data, teamId }: {
             <TableRow key={row.game_id}>
               <TableCell className="whitespace-nowrap sticky left-0 bg-background px-1 sm:px-2">
                 {row.game_id && teamId ? (
-                  <Link href={`/games/${row.game_id}`} className="text-primary hover:underline" prefetch={false}>
+                  <Link href={`/games/${row.game_id}`} className="text-primary hover:underline">
                     {row.game_date ?? "—"}
                   </Link>
                 ) : (
@@ -178,7 +178,7 @@ function CareerBatterTable({ data, teamId }: { data: BatterCareerStats[]; teamId
             const sacFlies = row.sac_flies ?? 0
             const totalBases = row.total_bases ?? 0
             const nameCell = teamId && row.player_id ? (
-              <Link href={`/team/${teamId}/players/${row.player_id}`} className="text-primary hover:underline" prefetch={false}>
+              <Link href={`/team/${teamId}/players/${row.player_id}`} className="text-primary hover:underline">
                 {row.name ?? "—"}
               </Link>
             ) : (

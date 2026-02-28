@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const { data: team } = await supabase
     .from('teams')
@@ -61,7 +61,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
-      <Link href="/" prefetch={false} className="flex items-center text-muted-foreground hover:text-foreground transition-colors">
+      <Link href="/" className="flex items-center text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="mr-1 h-4 w-4" />
         チーム一覧に戻る
       </Link>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { GameDetailClient } from "./GameDetailClient";
 
 // Mock next/navigation
@@ -112,13 +112,14 @@ describe("GameDetailClient", () => {
     expect(recordLink).toHaveAttribute("href", "/games/game-1/input");
   });
 
-  it("renders finished view with stats tabs", () => {
+  it("renders finished view with all tabs including stats", () => {
     mockState = {
       ...defaultState,
       game: makeGameInfo("finished"),
     };
     render(<GameDetailClient {...baseProps} initialStatus="finished" />);
 
+    expect(screen.getByText("速報")).toBeInTheDocument();
     expect(screen.getByText("オーダー")).toBeInTheDocument();
     expect(screen.getByText("打者成績")).toBeInTheDocument();
     expect(screen.getByText("投手成績")).toBeInTheDocument();
@@ -146,5 +147,35 @@ describe("GameDetailClient", () => {
 
     expect(screen.getByText("記録を入力する")).toBeInTheDocument();
     expect(screen.getByText("直近の記録")).toBeInTheDocument();
+  });
+
+  it("does not show stats tabs for scheduled games", () => {
+    mockState = {
+      ...defaultState,
+      game: makeGameInfo("scheduled"),
+    };
+    render(<GameDetailClient {...baseProps} initialStatus="scheduled" />);
+
+    expect(screen.getByText("速報")).toBeInTheDocument();
+    expect(screen.getByText("オーダー")).toBeInTheDocument();
+    expect(screen.queryByText("打者成績")).not.toBeInTheDocument();
+    expect(screen.queryByText("投手成績")).not.toBeInTheDocument();
+  });
+
+  it("shows live tab as default with live content visible", () => {
+    mockState = {
+      ...defaultState,
+      game: makeGameInfo("in_progress"),
+    };
+    render(<GameDetailClient {...baseProps} />);
+
+    // 速報 tab is default — live content is visible
+    expect(screen.getByText("速報")).toBeInTheDocument();
+    expect(screen.getByText("直近の記録")).toBeInTheDocument();
+
+    // オーダー tab trigger exists
+    const lineupTab = screen.getByText("オーダー");
+    expect(lineupTab).toBeInTheDocument();
+    expect(lineupTab.getAttribute("data-state")).toBe("inactive");
   });
 });

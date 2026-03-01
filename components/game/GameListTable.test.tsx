@@ -25,10 +25,9 @@ describe("GameListTable", () => {
     expect(screen.getByText("対戦")).toBeInTheDocument();
     expect(screen.getByText("スコア")).toBeInTheDocument();
     expect(screen.getByText("状態")).toBeInTheDocument();
-    expect(screen.getByText("操作")).toBeInTheDocument();
   });
 
-  it("renders game date and opponent name", () => {
+  it("renders game date and opponent name as link", () => {
     render(
       <GameListTable
         games={[baseGame]}
@@ -37,7 +36,8 @@ describe("GameListTable", () => {
       />
     );
     expect(screen.getByText("2026-02-25")).toBeInTheDocument();
-    expect(screen.getByText("vs テストタイガース")).toBeInTheDocument();
+    const matchupLink = screen.getByText("vs テストタイガース");
+    expect(matchupLink.closest("a")).toHaveAttribute("href", "/games/game-1");
     expect(screen.getByText("ホーム")).toBeInTheDocument();
   });
 
@@ -125,19 +125,6 @@ describe("GameListTable", () => {
     );
     expect(screen.queryByText("記録")).not.toBeInTheDocument();
     expect(screen.queryByText("編集")).not.toBeInTheDocument();
-    expect(screen.getByText("詳細")).toBeInTheDocument();
-  });
-
-  it("disables detail button for scheduled games without lineup", () => {
-    render(
-      <GameListTable
-        games={[baseGame]}
-        scoreMap={{}}
-        lineupSet={new Set()}
-      />
-    );
-    const detailButton = screen.getByText("詳細").closest("button");
-    expect(detailButton).toBeDisabled();
   });
 
   it("renders multiple games in rows", () => {

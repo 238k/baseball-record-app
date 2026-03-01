@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle2, ClipboardEdit, Eye, Play, Radio } from "lucide-react";
+import { CheckCircle2, ClipboardEdit, Play, Radio } from "lucide-react";
 
 interface GameRow {
   id: string;
@@ -71,7 +71,6 @@ export function GameListTable({ games, scoreMap, lineupSet }: GameListTableProps
           const isFree = game.is_free_mode ?? false;
           const score = scoreMap[game.id];
           const hasLineup = lineupSet.has(game.id);
-          const canSpectate = game.status !== "scheduled" || hasLineup;
 
           const matchup = isFree
             ? `${game.home_team_name ?? "ホーム"} vs ${game.visitor_team_name ?? "ビジター"}`
@@ -91,7 +90,12 @@ export function GameListTable({ games, scoreMap, lineupSet }: GameListTableProps
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{matchup}</span>
+                  <Link
+                    href={`/games/${game.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {matchup}
+                  </Link>
                   {isFree && (
                     <Badge variant="outline" className="text-xs">
                       フリー
@@ -116,34 +120,22 @@ export function GameListTable({ games, scoreMap, lineupSet }: GameListTableProps
               <TableCell>
                 <StatusBadge status={game.status} hasLineup={hasLineup} />
               </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-1">
-                  {game.status !== "finished" && (
-                    <Link href={`/games/${game.id}/input`}>
-                      <Button size="sm" variant="outline">
-                        {game.status === "scheduled" ? (
-                          <><ClipboardEdit className="mr-1 h-3.5 w-3.5" />編集</>
-                        ) : (
-                          <><Play className="mr-1 h-3.5 w-3.5" />記録</>
-                        )}
-                      </Button>
-                    </Link>
-                  )}
-                  {canSpectate ? (
-                    <Link href={`/games/${game.id}`}>
-                      <Button size="sm" variant="ghost">
-                        <Eye className="mr-1 h-3.5 w-3.5" />
-                        詳細
-                      </Button>
-                    </Link>
-                  ) : (
-                    <Button size="sm" variant="ghost" disabled>
-                      <Eye className="mr-1 h-3.5 w-3.5" />
-                      詳細
+              {game.status !== "finished" && (
+                <TableCell className="text-right">
+                  <Link href={`/games/${game.id}/input`}>
+                    <Button size="sm" variant="outline">
+                      {game.status === "scheduled" ? (
+                        <><ClipboardEdit className="mr-1 h-3.5 w-3.5" />編集</>
+                      ) : (
+                        <><Play className="mr-1 h-3.5 w-3.5" />記録</>
+                      )}
                     </Button>
-                  )}
-                </div>
-              </TableCell>
+                  </Link>
+                </TableCell>
+              )}
+              {game.status === "finished" && (
+                <TableCell />
+              )}
             </TableRow>
           );
         })}

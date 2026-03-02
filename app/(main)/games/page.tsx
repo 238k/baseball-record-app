@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { GameCard } from "@/components/game/GameCard";
+import { GameListTable } from "@/components/game/GameListTable";
 import { ArrowLeft } from "lucide-react";
 
 export default async function GamesListPage() {
@@ -111,16 +111,11 @@ export default async function GamesListPage() {
           試合がまだありません
         </p>
       ) : (
-        <div className="grid gap-4">
-          {games.map((game) => (
-            <GameCard
-              key={game.id}
-              game={game}
-              score={scoreMap[game.id]}
-              hasLineup={lineupSet.has(game.id)}
-            />
-          ))}
-        </div>
+        <GameListTable
+          games={games}
+          scoreMap={scoreMap}
+          lineupSet={lineupSet}
+        />
       )}
     </div>
   );

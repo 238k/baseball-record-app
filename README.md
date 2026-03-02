@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚾ 草野球スコアブック
 
-## Getting Started
+草野球の試合をかんたんに記録・管理できる Web アプリです。iPad（タブレット縦持ち）での操作に最適化されています。
 
-First, run the development server:
+![ログイン画面](docs/screenshots/login.png)
+
+## 主な機能
+
+- **試合記録** — 打席結果・投球をリアルタイムに記録
+- **スコアボード** — イニングごとのスコアをライブ表示
+- **成績管理** — 打率・防御率などを自動集計（試合別・通算）
+- **チーム管理** — 選手登録・オーダー編成・招待コードでメンバー追加
+- **ライブ共有** — Supabase Realtime でスコアをリアルタイム共有
+
+## スクリーンショット
+
+| 試合一覧 | 試合詳細（速報） | チーム管理 |
+|:---:|:---:|:---:|
+| ![試合一覧](docs/screenshots/games.png) | ![試合詳細](docs/screenshots/game-detail.png) | ![チーム管理](docs/screenshots/team.png) |
+
+## 技術スタック
+
+| カテゴリ | 技術 |
+|---|---|
+| フレームワーク | Next.js 16 (App Router) |
+| 言語 | TypeScript |
+| UI | shadcn/ui, Tailwind CSS v4 |
+| 認証・DB | Supabase (Auth, PostgreSQL, Realtime) |
+| テスト | Vitest, React Testing Library |
+| パッケージ管理 | pnpm |
+
+## セットアップ
+
+### 前提条件
+
+- Node.js 18+
+- pnpm
+- Docker Desktop（ローカル Supabase 用）
+
+### インストール
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### ローカル Supabase の起動
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.local.example .env.local
+pnpm supabase:start
+pnpm supabase:reset   # マイグレーション適用 + テストデータ投入
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 開発サーバー
 
-## Learn More
+```bash
+pnpm dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+http://localhost:3000/login を開き、テストアカウントでログインできます。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| ユーザー | メール | パスワード | 権限 |
+|---|---|---|---|
+| 管理者 | `admin@example.com` | `password123` | admin |
+| メンバー | `member@example.com` | `password123` | member |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## コマンド一覧
 
-## Deploy on Vercel
+```bash
+pnpm dev              # 開発サーバー起動
+pnpm build            # プロダクションビルド
+pnpm lint             # ESLint
+pnpm test             # テスト実行（一度）
+pnpm test:watch       # テスト（ウォッチモード）
+pnpm supabase:start   # ローカル Supabase 起動
+pnpm supabase:stop    # ローカル Supabase 停止
+pnpm supabase:reset   # DB リセット + seed 適用
+pnpm supabase:status  # Supabase 稼働状況の表示
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## ライセンス
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private

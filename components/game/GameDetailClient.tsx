@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
@@ -62,30 +62,29 @@ export function GameDetailClient({
   const [pitcherStats, setPitcherStats] = useState<PitcherGameStats[]>([]);
   const [statsVersion, setStatsVersion] = useState(0);
 
+  const fetchStats = useCallback(async () => {
+    const supabase = createClient();
+    const [batterRes, pitcherRes] = await Promise.all([
+      supabase
+        .from("v_batter_game_stats")
+        .select("*")
+        .eq("game_id", gameId)
+        .order("batting_order"),
+      supabase
+        .from("v_pitcher_game_stats")
+        .select("*")
+        .eq("game_id", gameId),
+    ]);
+    setBatterStats(batterRes.data ?? []);
+    setPitcherStats(pitcherRes.data ?? []);
+  }, [gameId]);
+
   // Fetch stats client-side for in_progress / finished games
   useEffect(() => {
     const status = state.game?.status ?? initialStatus;
     if (status !== "in_progress" && status !== "finished") return;
-
-    const fetchStats = async () => {
-      const supabase = createClient();
-      const [batterRes, pitcherRes] = await Promise.all([
-        supabase
-          .from("v_batter_game_stats")
-          .select("*")
-          .eq("game_id", gameId)
-          .order("batting_order"),
-        supabase
-          .from("v_pitcher_game_stats")
-          .select("*")
-          .eq("game_id", gameId),
-      ]);
-      setBatterStats(batterRes.data ?? []);
-      setPitcherStats(pitcherRes.data ?? []);
-    };
-
     fetchStats();
-  }, [gameId, state.game?.status, initialStatus, statsVersion]);
+  }, [gameId, state.game?.status, initialStatus, statsVersion, fetchStats]);
 
   const handleReload = () => {
     state.reload();

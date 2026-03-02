@@ -60,6 +60,7 @@ export function GameDetailClient({
 
   const [batterStats, setBatterStats] = useState<BatterGameStats[]>([]);
   const [pitcherStats, setPitcherStats] = useState<PitcherGameStats[]>([]);
+  const [statsVersion, setStatsVersion] = useState(0);
 
   // Fetch stats client-side for in_progress / finished games
   useEffect(() => {
@@ -84,7 +85,12 @@ export function GameDetailClient({
     };
 
     fetchStats();
-  }, [gameId, state.game?.status, initialStatus]);
+  }, [gameId, state.game?.status, initialStatus, statsVersion]);
+
+  const handleReload = () => {
+    state.reload();
+    setStatsVersion((v) => v + 1);
+  };
 
   if (state.loading) {
     return (
@@ -110,6 +116,7 @@ export function GameDetailClient({
   const currentStatus = state.game.status;
   const isLive = currentStatus === "in_progress";
   const isFinished = currentStatus === "finished";
+  const isShowStats = isLive || isFinished;
 
   // Build lineup data from useRealtimeGame lineups
   const myTeamSide = isHome ? "home" : "visitor";
@@ -218,7 +225,7 @@ export function GameDetailClient({
               LIVE
             </Badge>
           )}
-          <Button variant="outline" size="sm" onClick={() => state.reload()}>
+          <Button variant="outline" size="sm" onClick={handleReload}>
             <RefreshCw className="mr-1 h-4 w-4" />
             更新
           </Button>
@@ -275,7 +282,7 @@ export function GameDetailClient({
         <TabsList className="w-full">
           <TabsTrigger value="live">速報</TabsTrigger>
           <TabsTrigger value="lineup">オーダー</TabsTrigger>
-          {(isLive || isFinished) && (
+          {isShowStats && (
             <>
               <TabsTrigger value="batter">打者成績</TabsTrigger>
               <TabsTrigger value="pitcher">投手成績</TabsTrigger>
@@ -348,7 +355,7 @@ export function GameDetailClient({
         </TabsContent>
 
         {/* Batter stats tab */}
-        {(isLive || isFinished) && (
+        {isShowStats && (
           <TabsContent value="batter" className="mt-4">
             <Card>
               <CardHeader className="pb-2">
@@ -362,7 +369,7 @@ export function GameDetailClient({
         )}
 
         {/* Pitcher stats tab */}
-        {(isLive || isFinished) && (
+        {isShowStats && (
           <TabsContent value="pitcher" className="mt-4">
             <Card>
               <CardHeader className="pb-2">

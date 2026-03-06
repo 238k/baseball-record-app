@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { LogOut, Settings } from "lucide-react";
+import { MobileNav } from "@/components/mobile-nav";
 
 async function signOut() {
   "use server";
@@ -36,10 +37,14 @@ export default async function MainLayout({
       <header className="border-b bg-card">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-1">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <MobileNav
+              displayName={profile?.display_name}
+              signOutAction={signOut}
+            />
             <Link href="/" className="text-lg sm:text-xl font-bold shrink-0">
-              ⚾ <span className="hidden sm:inline">野球記録</span><span className="sm:hidden">記録</span>
+              ⚾ <span className="hidden md:inline">野球記録</span><span className="md:hidden">記録</span>
             </Link>
-            <nav className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
+            <nav className="hidden md:flex items-center gap-3 text-sm">
               <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
                 トップ
               </Link>
@@ -51,19 +56,19 @@ export default async function MainLayout({
               </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
-            <span className="text-sm text-muted-foreground hidden sm:block">
+          <div className="hidden md:flex items-center gap-3 shrink-0">
+            <span className="text-sm text-muted-foreground">
               {profile?.display_name}
             </span>
             <Link href="/settings">
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 sm:h-9 sm:w-9">
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
             <form action={signOut}>
-              <Button type="submit" variant="ghost" size="sm" className="h-8 px-2 sm:h-9 sm:px-3">
-                <LogOut className="h-4 w-4 sm:mr-1" />
-                <span className="hidden sm:inline">ログアウト</span>
+              <Button type="submit" variant="ghost" size="sm" className="h-9 px-3">
+                <LogOut className="h-4 w-4 mr-1" />
+                ログアウト
               </Button>
             </form>
           </div>

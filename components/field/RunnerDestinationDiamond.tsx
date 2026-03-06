@@ -254,8 +254,8 @@ export function RunnerDestinationDiamond({
           style={{ cursor: "pointer" }}
         >
           <circle
-            cx={DEST_ZONES.scored.x}
-            cy={DEST_ZONES.scored.y}
+            cx={BASE_POSITIONS.home.x}
+            cy={BASE_POSITIONS.home.y}
             r={28}
             fill="#22c55e"
             opacity={0.3}
@@ -263,8 +263,8 @@ export function RunnerDestinationDiamond({
             strokeWidth={2}
           />
           <text
-            x={DEST_ZONES.scored.x}
-            y={DEST_ZONES.scored.y + 4}
+            x={BASE_POSITIONS.home.x}
+            y={BASE_POSITIONS.home.y + 4}
             textAnchor="middle"
             fontSize={11}
             fontWeight="bold"

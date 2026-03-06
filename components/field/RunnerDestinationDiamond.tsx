@@ -22,7 +22,7 @@ const DEST_COORDS: Record<Exclude<RunnerDest, "stay">, { x: number; y: number }>
   "1st": { x: BASE_POSITIONS.first.x, y: BASE_POSITIONS.first.y },
   "2nd": { x: BASE_POSITIONS.second.x, y: BASE_POSITIONS.second.y },
   "3rd": { x: BASE_POSITIONS.third.x, y: BASE_POSITIONS.third.y },
-  scored: DEST_ZONES.scored,
+  scored: { x: BASE_POSITIONS.home.x, y: BASE_POSITIONS.home.y },
   out: DEST_ZONES.out,
 };
 

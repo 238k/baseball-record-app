@@ -16,6 +16,7 @@ interface RunnerDestinationDiamondProps {
 }
 
 const RUNNER_RADIUS = 16;
+const TAP_RADIUS = 24; // min 48px diameter for touch targets (Apple HIG)
 
 // Map RunnerDest to SVG coordinates
 const DEST_COORDS: Record<Exclude<RunnerDest, "stay">, { x: number; y: number }> = {
@@ -393,6 +394,14 @@ export function RunnerDestinationDiamond({
                   data-testid={`pulse-${entity.key}`}
                 />
               )}
+
+              {/* Invisible expanded tap target */}
+              <circle
+                cx={0}
+                cy={0}
+                r={TAP_RADIUS}
+                fill="transparent"
+              />
 
               {/* Main dot */}
               <circle

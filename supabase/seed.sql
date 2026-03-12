@@ -3,6 +3,9 @@
 -- supabase db reset で自動適用されます
 -- =====================================================
 
+-- pgcrypto を有効化（crypt/gen_salt に必要）
+create extension if not exists pgcrypto with schema extensions;
+
 -- =====================================================
 -- 1. テストユーザー作成
 -- =====================================================
@@ -20,7 +23,7 @@ INSERT INTO auth.users (
   'a1111111-1111-1111-1111-111111111111',
   'authenticated', 'authenticated',
   'admin@example.com',
-  crypt('password123', gen_salt('bf')),
+  extensions.crypt('password123', extensions.gen_salt('bf')),
   now(), now(), now(),
   '', '',
   '', '', '',
@@ -54,7 +57,7 @@ INSERT INTO auth.users (
   'b2222222-2222-2222-2222-222222222222',
   'authenticated', 'authenticated',
   'member@example.com',
-  crypt('password123', gen_salt('bf')),
+  extensions.crypt('password123', extensions.gen_salt('bf')),
   now(), now(), now(),
   '', '',
   '', '', '',

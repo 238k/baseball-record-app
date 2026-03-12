@@ -207,7 +207,7 @@ export function GameDetailClient({
     : "—";
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-8 pb-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link
@@ -256,7 +256,7 @@ export function GameDetailClient({
 
       {/* Record input button (hide for finished games) */}
       {!isFinished && (
-        <>
+        <div className="space-y-2">
           <Link href={`/games/${gameId}/input`}>
             <Button
               size="lg"
@@ -273,7 +273,7 @@ export function GameDetailClient({
               入力者: {state.inputHolder.displayName}
             </p>
           )}
-        </>
+        </div>
       )}
 
       {/* Tabbed content */}

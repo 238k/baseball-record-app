@@ -434,25 +434,40 @@ export default function GameInputPage() {
   // ---- Auto-save (no runners, deterministic result) ----
 
   const autoSaveAtBat = useCallback(
-    (code: string, label: string, bDest: RunnerDest) => {
+    (code: string, label: string, bDest: RunnerDest, existingRunners?: RunnerRow[]) => {
       if (!currentBatter || !gameState.game) return;
       if (pendingActionRef.current) return;
 
       setActionError(null);
 
+      const runners = existingRunners ?? [];
+
       const baseRunnersBefore: { base: string; lineupId: string }[] = [];
+      for (const r of runners) {
+        baseRunnersBefore.push({ base: r.fromBase, lineupId: r.lineupId });
+      }
 
       const destinations: { lineupId: string; event: "scored" | "out"; toBase: undefined }[] = [];
+      for (const r of runners) {
+        if (r.destination === "scored" || r.destination === "out") {
+          destinations.push({ lineupId: r.lineupId, event: r.destination, toBase: undefined });
+        }
+      }
       if (bDest === "scored" || bDest === "out") {
         destinations.push({ lineupId: currentBatter.id, event: bDest, toBase: undefined });
       }
 
       const runnersAfter: { base: string; lineupId: string }[] = [];
+      for (const r of runners) {
+        if (["1st", "2nd", "3rd"].includes(r.destination)) {
+          runnersAfter.push({ base: r.destination, lineupId: r.lineupId });
+        }
+      }
       if (["1st", "2nd", "3rd"].includes(bDest)) {
         runnersAfter.push({ base: bDest, lineupId: currentBatter.id });
       }
 
-      const rbi = computeRbi(code, bDest, []);
+      const rbi = computeRbi(code, bDest, runners);
 
       // Optimistic UI update
       setAutoSaveBanner({
@@ -463,7 +478,7 @@ export default function GameInputPage() {
       setPitchLog([]);
       syncPitchLogToDb([]);
 
-      const outsFromResult = countOutsFromResult(code, bDest, []);
+      const outsFromResult = countOutsFromResult(code, bDest, runners);
       const totalOuts = gameState.currentOuts + outsFromResult;
 
       if (totalOuts >= 3) {
@@ -485,7 +500,8 @@ export default function GameInputPage() {
         else if (bDest === "2nd") optimisticRunners.second = currentBatter;
         else if (bDest === "3rd") optimisticRunners.third = currentBatter;
 
-        const scoreDelta = bDest === "scored" ? 1 : 0;
+        const runnerScoredCount = runners.filter((r) => r.destination === "scored").length;
+        const scoreDelta = (bDest === "scored" ? 1 : 0) + runnerScoredCount;
         const scoreKey = gameState.currentHalf === "top" ? "visitor" : "home";
         const otherKey = scoreKey === "home" ? "visitor" : "home";
 
@@ -537,9 +553,9 @@ export default function GameInputPage() {
       const defaults = getDefaultDestinations(code, gameState.baseRunners);
       const bDest = getDefaultBatterDest(code);
 
-      // No runners → auto-save (skip runner dialog)
-      if (defaults.length === 0) {
-        autoSaveAtBat(code, label, bDest);
+      // No runners or HR → auto-save (skip runner dialog)
+      if (defaults.length === 0 || code === "HR") {
+        autoSaveAtBat(code, label, bDest, defaults);
         return;
       }
 

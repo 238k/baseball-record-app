@@ -159,3 +159,44 @@ Defensive position labels (Japanese): 投・捕・一・二・三・遊・左・
 @/hooks       →  hooks/
 @/components/ui  →  components/ui/  (shadcn auto-generated)
 ```
+
+## Code Quality Rules
+
+詳細は `docs/` 配下の各ドキュメントを参照。
+
+### コンポーネント設計 → [docs/component-guidelines.md](docs/component-guidelines.md)
+
+- 1ファイル300行以下。超える場合は分割を検討
+- ビジネスロジック（計算・判定・変換）はコンポーネント外の `lib/` に配置
+- `useState` が3個を超えたら `useReducer` または Zustand を使用
+- 同じ概念を複数の state で表現しない（単一の構造に統合）
+
+### Server Action → [docs/server-action-patterns.md](docs/server-action-patterns.md)
+
+- 常に `{ data, error }` 形式で返す。エラーを `console.error` だけで握りつぶさない
+- 認証チェック（`getUser()`）は全アクションで必須
+- 複数テーブルへの書き込みはトランザクション（Supabase RPC）で実行
+- ステータスチェック等の共通処理はヘルパー関数に集約
+
+### バリデーション → [docs/validation-strategy.md](docs/validation-strategy.md)
+
+- Zod スキーマをクライアント・サーバーで共有
+- ドメイン値（結果コード、ポジション、塁）は `z.enum()` でリテラル型定義
+
+### 型安全性
+
+- `as` による型アサーション禁止。型ガードまたは Supabase 生成型を使用
+- Supabase クエリには `.returns<T>()` を活用
+- 生成型 `Database["public"]["Tables"]["xxx"]["Row"]` を積極的に使用
+
+### データベース → [docs/database-conventions.md](docs/database-conventions.md)
+
+- FK列には必ずインデックスを作成
+- JSONB列には CHECK 制約を付与
+- 主要テーブルに `updated_at` を追加（自動更新トリガー付き）
+- マイグレーション命名: `YYMMDDHHMM_snake_case_description.sql`
+
+### リアルタイム → [docs/realtime-architecture.md](docs/realtime-architecture.md)
+
+- 1つの `gameId` に対して1つのリアルタイムチャネル
+- フック内にリアルタイム購読を持たせず、チャネルオーケストレーターから分離
